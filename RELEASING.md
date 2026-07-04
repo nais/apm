@@ -64,6 +64,18 @@ The previous manual `next` dist-tag pre-release flow is retired. If pre-releases
 needed again, configure a release-please prerelease channel (a `release-please-config.json`
 `prerelease` setting on a dedicated branch) rather than hand-cutting one.
 
+## The first release is pinned to 0.1.0
+
+The manifest (`.release-please-manifest.json`) is seeded at `0.0.0` — the "not
+yet released" sentinel. Because release-please falls back to its Node default
+initial version of **1.0.0** for a first release from that sentinel (rather
+than bumping `0.0.0 → 0.1.0`), the first version is pinned with a one-time
+`Release-As: 0.1.0` footer on a `chore` commit. That footer applies only to the
+first release and is ignored afterwards; from `0.1.0` onward, versions compute
+normally from conventional commits (`feat` → minor, `fix` → patch, breaking →
+minor while pre-1.0 via `bump-minor-pre-major`). Do **not** add a new
+`Release-As` footer or a config-level `release-as` for routine releases.
+
 ## Manual escape hatch
 
 There is intentionally **no** manual publish workflow — removing it prevents accidental
