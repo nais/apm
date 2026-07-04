@@ -1,0 +1,113 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+# release-please opens/labels the Release PR and creates tags + GitHub Releases;
+# the publish job additionally needs to write packages to GHPR. Least-privilege is
+# tightened again per-job below.
+permissions:
+  contents: write
+  pull-requests: write
+  packages: write
+
+# Serialize release passes on main so a Release-PR merge that lands while another
+# push to main is still mid-flight can never produce two concurrent publishes.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Job A — maintain the Release PR and, when it is merged, cut the tag+Release.
+  # On a normal feature merge this only updates the accumulating Release PR
+  # (next version + CHANGELOG) and does nothing else. On a Release-PR merge it
+  # sets releases_created=true and emits tag_name (e.g. v0.2.0).
+  # ---------------------------------------------------------------------------
+  release-please:
+    runs-on: ubuntu-latest
+    outputs:
+      releases_created: ${{ steps.release.outputs.releases_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+    steps:
+      - name: Run release-please
+        id: release
+        uses: googleapis/release-please-action@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+  # ---------------------------------------------------------------------------
+  # Job B — publish to GHPR, gated on a release having just been created.
+  #
+  # THE GITHUB_TOKEN GOTCHA (why this lives here and not in a separate
+  # `release: published` workflow): a tag/Release created by the built-in
+  # GITHUB_TOKEN does NOT emit events that trigger other workflow runs (GitHub's
+  # deliberate loop-prevention). A standalone publish.yaml keyed on
+  # `release: published` would therefore silently never fire. So we publish in
+  # THIS same run, gated on release-please's releases_created output.
+  # ---------------------------------------------------------------------------
+  publish:
+    needs: release-please
+    if: needs.release-please.outputs.releases_created == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout release tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.release-please.outputs.tag_name }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          registry-url: https://npm.pkg.github.com
+          scope: '@nais'
+
+      # Belt-and-suspenders: release-please sets package.json version == the tag it
+      # created, so this always passes — but it guards against a hand-edited or
+      # drifted version ever shipping under the wrong tag.
+      - name: Verify package version matches release tag
+        run: |
+          PKG_VERSION="$(node -p "require('./package.json').version")"
+          TAG="${{ needs.release-please.outputs.tag_name }}"
+          EXPECTED="${TAG#v}"
+          if [ "$PKG_VERSION" != "$EXPECTED" ]; then
+            echo "::error::package.json version ($PKG_VERSION) does not match release tag $TAG (expected $EXPECTED)."
+            exit 1
+          fi
+          echo "package.json version $PKG_VERSION matches release tag $TAG"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Test
+        run: pnpm test
+
+      - name: Build
+        run: pnpm build
+
+      # NOTE ON npm PROVENANCE (--provenance): intentionally OMITTED, and we do not
+      # request `id-token: write`. npm build provenance/attestations are a public-npm
+      # (registry.npmjs.org) feature — the CLI uploads a Sigstore bundle to that
+      # registry's attestation API. GitHub Package Registry (npm.pkg.github.com) does
+      # not implement that API, so `--provenance` here would produce nothing
+      # verifiable. Re-add `id-token: write` + `--provenance` only if @nais/apm ever
+      # moves to npmjs.org. For GHPR-native attestation, use
+      # actions/attest-build-provenance instead (separate mechanism).
+      #
+      # Same-org publish: secrets.GITHUB_TOKEN can publish @nais/apm to the nais org's
+      # GHPR, so no PAT is needed.
+      - name: Publish to GitHub Package Registry
+        run: pnpm publish --no-git-checks
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

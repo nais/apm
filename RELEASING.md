@@ -1,59 +1,78 @@
 # Releasing `@nais/apm`
 
-Maintainer guide for cutting a release. Releases are driven by **GitHub Releases**:
-creating a published release triggers `.github/workflows/publish.yaml`, which builds
-and publishes the package to the GitHub Package Registry (GHPR). You never run
-`pnpm publish` by hand.
+Releases are **fully automated with [release-please](https://github.com/googleapis/release-please-action)**.
+As a maintainer you never run `pnpm publish`, never edit the version by hand, and never
+create a tag or GitHub Release yourself. You only **merge PRs**.
 
-## Prerequisites
+## The flow, end to end
 
-- The change you want to ship is already merged to `main` and green in CI.
-- You have permission to push tags / create releases on `nais/apm`.
+1. **Land work on `main` with Conventional Commits.** Every PR is squash/merged with a
+   conventional message (`feat: …`, `fix: …`, `docs: …`, etc.). The `Commitlint`
+   workflow (`.github/workflows/commitlint.yml`) enforces this on every PR.
+2. **release-please maintains a "Release PR".** On each push to `main`, the `Release`
+   workflow (`.github/workflows/release-please.yml`) runs release-please. It opens (or
+   updates) a single **Release PR** titled like `chore(main): release 0.2.0` that:
+   - computes the next version from the accumulated commits (feat ⇒ minor, fix ⇒ patch;
+     pre-1.0, breaking changes also bump the minor — see `bump-minor-pre-major` in
+     `release-please-config.json`),
+   - rewrites `CHANGELOG.md`, and
+   - bumps `version` in `package.json`.
 
-## Cutting a stable release
+   This PR keeps updating itself as more commits land. Nothing is published while it sits
+   open.
+3. **Merge the Release PR to release.** When you merge it, release-please creates the git
+   tag (`vX.Y.Z`) and the GitHub Release, then the **same workflow run** publishes to the
+   GitHub Package Registry (GHPR).
 
-1. **Bump the version in a PR.** Edit `version` in `package.json` (semver; pre-1.0,
-   so breaking changes may land in a minor `0.x` bump — see the CHANGELOG note).
-   Update `CHANGELOG.md`: rename the `Unreleased`/current section to the new version
-   with today's date, and make sure the entry reflects what actually changed. Open
-   the PR, get it reviewed, merge to `main`.
-2. **Create the GitHub release.** Once the version bump is on `main`, create a new
-   GitHub release with tag `vX.Y.Z` (leading `v`) targeting `main`. The tag version
-   **must** match `package.json` — the publish workflow fails otherwise (see Gates).
-   Leave "Set as a pre-release" **unchecked**.
-3. **Done.** Publishing the release runs `publish.yaml`: it verifies the version,
-   installs, tests, builds, and runs `pnpm publish --tag latest` to GHPR.
+That's it. To cut a release: review and merge the bot's Release PR.
 
-## Cutting a pre-release
+## The `GITHUB_TOKEN` gotcha (why publish lives in the release workflow)
 
-Same as above, but when creating the GitHub release, **check "Set as a pre-release"**.
-The workflow detects `release.prerelease == true` and publishes under the `next`
-dist-tag instead of `latest`, so `pnpm add @nais/apm` still resolves the last stable
-version and testers opt in with `pnpm add @nais/apm@next`.
+A tag/Release created by the built-in `GITHUB_TOKEN` **does not** trigger other
+workflows — this is GitHub's deliberate protection against workflow loops. So a separate
+`publish.yaml` keyed on `release: published` would **silently never fire**.
 
-Use a pre-release tag such as `v0.2.0-rc.1` (keep `package.json` in lockstep:
-`"version": "0.2.0-rc.1"`).
+To avoid that, publishing runs in a **second job of the release workflow itself**
+(`publish`), gated on `if: needs.release-please.outputs.releases_created == 'true'`. When
+release-please reports it created a release, that job checks out the new tag, re-runs
+`pnpm test` + `pnpm build`, and runs `pnpm publish --no-git-checks` to GHPR using
+`secrets.GITHUB_TOKEN` (same-org publish, no PAT needed). The old standalone
+`publish.yaml` has been removed.
 
 ## What CI gates exist
+
+**On every PR (`commitlint.yml`):** every commit in the PR must be a valid Conventional
+Commit — this is what makes release-please's version inference trustworthy.
 
 **On every PR / push to `main` (`ci.yaml`):**
 
 - `pnpm test` (vitest) and `pnpm build` (tsc → `dist/`) must pass.
 - **Pack verification:** `npm pack --dry-run` must contain `dist/` and must **not**
-  contain any `src/` files — this catches a broken `files` field before it ships a
-  tarball with source instead of build output.
+  contain any `src/` files.
 
-**On release publish (`publish.yaml`):**
+**On a Release-PR merge (`release-please.yml` → `publish` job):**
 
 - **Version/tag guard:** publishing fails if `package.json` version does not equal the
-  release tag with its leading `v` stripped (tag `v1.2.3` ⇒ version `1.2.3`).
-- Full `pnpm test` + `pnpm build` run again before publish.
-- Stable releases publish to the `latest` dist-tag; pre-releases to `next`.
+  release tag with its leading `v` stripped. release-please keeps these in lockstep, so
+  this is a belt-and-suspenders check against drift.
+- Full `pnpm test` + `pnpm build` run again before publish, at the tagged commit.
+- Publishes to the `latest` dist-tag.
+
+## Pre-releases
+
+The previous manual `next` dist-tag pre-release flow is retired. If pre-releases are
+needed again, configure a release-please prerelease channel (a `release-please-config.json`
+`prerelease` setting on a dedicated branch) rather than hand-cutting one.
+
+## Manual escape hatch
+
+There is intentionally **no** manual publish workflow — removing it prevents accidental
+double-publishes. If you ever need to publish out of band, do it locally against a clean
+checkout of the tag with `pnpm publish` and a token that can write to the org's GHPR.
 
 ## A note on npm provenance
 
-We publish to GHPR, which does **not** support npm build provenance/attestations —
-those are a public-npm-registry (`registry.npmjs.org`) feature. So the publish
-workflow deliberately omits `--provenance`. See the comment at the top of
-`.github/workflows/publish.yaml` for the full rationale and what to change if the
-package ever moves to npmjs.org.
+We publish to GHPR, which does **not** support npm build provenance/attestations — those
+are a public-npm-registry (`registry.npmjs.org`) feature. The publish job deliberately
+omits `--provenance`; see the comment in `.github/workflows/release-please.yml` for the
+full rationale and what to change if the package ever moves to npmjs.org.
