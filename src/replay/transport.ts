@@ -24,6 +24,8 @@
 import { gzipSync } from 'fflate';
 import type { eventWithTime } from '@grafana/rrweb';
 
+import { scrubReplayEvents } from '../scrub.js';
+
 import {
   MAX_BUFFER_BYTES,
   MAX_BUFFER_MS,
@@ -59,9 +61,17 @@ function toBase64(bytes: Uint8Array): string {
   return btoa(binary);
 }
 
-/** base64(gzip(JSON.stringify(events))) — the `data` attr payload. */
+/**
+ * base64(gzip(JSON.stringify(events))) — the `data` attr payload.
+ *
+ * A PII scrub pass runs over the serialized rrweb events BEFORE gzip: this is
+ * the last (and only) point where `scrub.ts`'s fnr/email/token patterns can
+ * reach attribute values and URLs inside the node tree — once gzipped, Faro's
+ * `beforeSend` scrubber is structurally blind to the content.
+ */
 export function encodeEvents(events: readonly eventWithTime[]): string {
-  const json = JSON.stringify(events);
+  const scrubbed = scrubReplayEvents(events as readonly unknown[]);
+  const json = JSON.stringify(scrubbed);
   return toBase64(gzipSync(new TextEncoder().encode(json)));
 }
 

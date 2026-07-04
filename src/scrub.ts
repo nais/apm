@@ -50,6 +50,48 @@ export function scrubString(value: string): string {
 // correlation key — see {@link looksLikePii}.
 const RAW_IDENT = /^[A-Za-z]\d{6}$/;
 
+// A whole path segment that is exactly a fødselsnummer (11 digits, optional
+// space) with a plausible date prefix — reuses the {@link scrubString} logic.
+const FNR_SEGMENT = /^(\d{6})\s?(\d{5})$/;
+// A UUID/GUID path segment (aktør-id, correlation id, …).
+const UUID_SEGMENT = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+
+/** Mask a single URL path segment when it is a PII-shaped identifier. */
+function maskPathSegment(segment: string): string {
+  if (segment === '' || segment.includes(':')) {
+    // Empty (leading/double slash) or the scheme/host:port segment — leave.
+    return segment;
+  }
+  const fnr = FNR_SEGMENT.exec(segment);
+  if (fnr && hasPlausibleDatePrefix(fnr[1]!)) {
+    return '[fnr]';
+  }
+  if (UUID_SEGMENT.test(segment)) {
+    return '[uuid]';
+  }
+  if (RAW_IDENT.test(segment)) {
+    return '[ident]';
+  }
+  // Emails and any embedded fnr/token fall through to the shared scrubber.
+  return scrubString(segment);
+}
+
+/**
+ * Sanitize a URL captured for replay/snapshot Meta events. Query string and
+ * fragment are dropped entirely (they routinely carry `token=`/`fnr=`), and
+ * PII-shaped path segments (fødselsnummer, UUID, NAV ident, email) are masked.
+ *
+ * Best-effort by the same disclaimer as {@link scrubString}: a name-slug path
+ * segment (`/sak/ola-nordmann/`) is not pattern-shaped and survives.
+ */
+export function scrubUrl(url: string): string {
+  if (typeof url !== 'string' || url === '') {
+    return url;
+  }
+  const base = url.split(/[?#]/, 1)[0] ?? url;
+  return base.split('/').map(maskPathSegment).join('/');
+}
+
 /**
  * Best-effort check for whether a *whole* string looks like personal data:
  * a fødselsnummer, an email, a token-bearing URL param (all reusing the scrub
@@ -68,12 +110,15 @@ export function looksLikePii(value: string): boolean {
 }
 
 const MAX_DEPTH = 8;
+// rrweb serialized node trees nest far deeper than a Faro transport item, so the
+// replay payload pass ({@link scrubReplayEvents}) walks with a much larger cap.
+const REPLAY_MAX_DEPTH = 64;
 
-function scrubValue(value: unknown, depth: number, seen: WeakSet<object>): unknown {
+function scrubValue(value: unknown, depth: number, seen: WeakSet<object>, maxDepth = MAX_DEPTH): unknown {
   if (typeof value === 'string') {
     return scrubString(value);
   }
-  if (value == null || typeof value !== 'object' || depth >= MAX_DEPTH) {
+  if (value == null || typeof value !== 'object' || depth >= maxDepth) {
     return value;
   }
   if (seen.has(value)) {
@@ -81,13 +126,27 @@ function scrubValue(value: unknown, depth: number, seen: WeakSet<object>): unkno
   }
   seen.add(value);
   if (Array.isArray(value)) {
-    return value.map((entry) => scrubValue(entry, depth + 1, seen));
+    return value.map((entry) => scrubValue(entry, depth + 1, seen, maxDepth));
   }
   const out: Record<string, unknown> = {};
   for (const [key, entry] of Object.entries(value)) {
-    out[key] = scrubValue(entry, depth + 1, seen);
+    out[key] = scrubValue(entry, depth + 1, seen, maxDepth);
   }
   return out;
+}
+
+/**
+ * Deep-scrub every string leaf of a serialized rrweb replay/snapshot payload.
+ *
+ * The replay transport gzips chunks before Faro's `beforeSend` scrubber ever
+ * sees them, so this is the only layer where the fnr/email/token patterns can
+ * match attribute values and URLs inside the (uncompressed) rrweb node tree.
+ * Runs on the plain JSON events just before gzip; masked text (`***…`) scrubs
+ * to a no-op, so it earns its keep on attributes and URLs the rrweb floor never
+ * masks. Best-effort by the same disclaimer as {@link scrubString}.
+ */
+export function scrubReplayEvents<T>(events: T): T {
+  return scrubValue(events, 0, new WeakSet(), REPLAY_MAX_DEPTH) as T;
 }
 
 /** Deep-scrub every string in a transport item (payload + page URL), without mutating the input. */

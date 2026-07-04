@@ -2,7 +2,14 @@ import { describe, expect, it, vi } from 'vitest';
 import { TransportItemType } from '@grafana/faro-web-sdk';
 import type { ExceptionEvent, LogEvent, Meta, TransportItem } from '@grafana/faro-web-sdk';
 
-import { composeBeforeSend, looksLikePii, scrubString, scrubTransportItem } from './scrub.js';
+import {
+  composeBeforeSend,
+  looksLikePii,
+  scrubReplayEvents,
+  scrubString,
+  scrubTransportItem,
+  scrubUrl,
+} from './scrub.js';
 
 describe('scrubString — fødselsnummer', () => {
   it('masks an fnr without a space', () => {
@@ -59,6 +66,76 @@ describe('scrubString — token-bearing URLs', () => {
   it('redacts tokens inside stack trace strings', () => {
     const stack = 'Error: boom\n    at fetchUser (https://app.nav.no/assets/x.js?token=secret123:1:2)';
     expect(scrubString(stack)).toContain('?token=[redacted]:1:2');
+  });
+});
+
+describe('scrubUrl', () => {
+  it('strips the query string and fragment entirely', () => {
+    expect(scrubUrl('https://app.nav.no/sak/vedtak?token=eyJhbGc&foo=bar')).toBe(
+      'https://app.nav.no/sak/vedtak'
+    );
+    expect(scrubUrl('https://app.nav.no/behandling#access_token=eyJ')).toBe(
+      'https://app.nav.no/behandling'
+    );
+  });
+
+  it('masks a fødselsnummer path segment', () => {
+    expect(scrubUrl('https://app.nav.no/sak/01017012345/vedtak')).toBe(
+      'https://app.nav.no/sak/[fnr]/vedtak'
+    );
+    // Also with the query string carrying a token.
+    expect(scrubUrl('/person/010170 12345?fnr=x')).toBe('/person/[fnr]');
+  });
+
+  it('masks a UUID path segment', () => {
+    expect(scrubUrl('https://app.nav.no/aktor/1b4e28ba-2fa1-11d2-883f-0016d3cca427/detaljer')).toBe(
+      'https://app.nav.no/aktor/[uuid]/detaljer'
+    );
+  });
+
+  it('masks a NAV ident and an email path segment', () => {
+    expect(scrubUrl('/saksbehandler/Z994488')).toBe('/saksbehandler/[ident]');
+    expect(scrubUrl('/bruker/ola.nordmann@nav.no/profil')).toBe('/bruker/[email]/profil');
+  });
+
+  it('leaves a clean URL untouched', () => {
+    expect(scrubUrl('https://app.nav.no/dashboard/oversikt')).toBe(
+      'https://app.nav.no/dashboard/oversikt'
+    );
+  });
+
+  it('leaves a name-slug path (not pattern-shaped) — documented residual', () => {
+    expect(scrubUrl('https://app.nav.no/sak/ola-nordmann/')).toBe(
+      'https://app.nav.no/sak/ola-nordmann/'
+    );
+  });
+});
+
+describe('scrubReplayEvents', () => {
+  it('scrubs fnr/email/token in attribute strings and URLs deep in the node tree', () => {
+    const events = [
+      {
+        type: 2,
+        data: {
+          node: {
+            tagName: 'a',
+            attributes: {
+              href: '/sak/01017012345/vedtak?token=eyJhbGc',
+              title: 'Slett bruker ola.nordmann@nav.no',
+            },
+            childNodes: [{ type: 3, textContent: 'kontakt 010170 12345' }],
+          },
+        },
+        timestamp: 1,
+      },
+    ];
+    const scrubbed = scrubReplayEvents(events) as typeof events;
+    const attrs = scrubbed[0]!.data.node.attributes;
+    expect(attrs.href).toBe('/sak/[fnr]/vedtak?token=[redacted]');
+    expect(attrs.title).toBe('Slett bruker [email]');
+    expect((scrubbed[0]!.data.node.childNodes[0] as { textContent: string }).textContent).toBe(
+      'kontakt [fnr]'
+    );
   });
 });
 

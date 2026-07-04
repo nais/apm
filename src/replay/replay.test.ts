@@ -1,7 +1,7 @@
 import { describe, expect, it, beforeEach } from 'vitest';
 import { gunzipSync } from 'fflate';
 import type { eventWithTime } from '@grafana/rrweb-types';
-import { buildChunks, sendEvents, _resetChunkSeqForTesting } from './transport.js';
+import { buildChunks, encodeEvents, sendEvents, _resetChunkSeqForTesting } from './transport.js';
 import { buildRecordMaskingOptions, buildSnapshotMaskingOptions } from './masking.js';
 import { captureSnapshot, _resetSnapshotStateForTesting } from './snapshot.js';
 import { REPLAY_CHUNK_EVENT_NAME } from './constants.js';
@@ -75,6 +75,35 @@ describe('transport wire contract', () => {
   });
 });
 
+describe('transport PII scrub pass (before gzip)', () => {
+  it('scrubs fnr/email/token in attributes and URLs, and still round-trips', () => {
+    const events = [
+      {
+        type: 4,
+        data: { href: 'https://app.nav.no/behandling/01017012345?token=eyJhbGc' },
+        timestamp: 1,
+      },
+      {
+        type: 2,
+        data: {
+          node: {
+            tagName: 'a',
+            attributes: { href: '/sak/010170 12345/vedtak', title: 'send til ola@nav.no' },
+          },
+        },
+        timestamp: 2,
+      },
+    ] as unknown as eventWithTime[];
+
+    const decoded = decode(encodeEvents(events)) as unknown as Array<{ data: Record<string, unknown> }>;
+    expect(decoded).toHaveLength(2);
+    expect(decoded[0]!.data.href).toBe('https://app.nav.no/behandling/[fnr]?token=[redacted]');
+    const attrs = (decoded[1]!.data.node as { attributes: Record<string, string> }).attributes;
+    expect(attrs.href).toBe('/sak/[fnr]/vedtak');
+    expect(attrs.title).toBe('send til [email]');
+  });
+});
+
 describe('masking floor', () => {
   it('always masks inputs and text and blocks media', () => {
     const rec = buildRecordMaskingOptions();
@@ -105,5 +134,20 @@ describe('snapshot throttling', () => {
     expect(await captureSnapshot('boom C', push, { snapshotFn: fakeSnapshot as never })).toBe(true);
     expect(await captureSnapshot('boom D', push, { snapshotFn: fakeSnapshot as never })).toBe(false); // session cap 3
     expect(pushed.length).toBeGreaterThanOrEqual(3);
+  });
+
+  it('scrubs the Meta href (query string + fnr path segment) before it ships', async () => {
+    window.history.replaceState(null, '', '/behandling/01017012345/steg?token=eyJhbGc');
+
+    const pushed: Array<Record<string, string>> = [];
+    const push = (_name: string, attrs: Record<string, string>) => pushed.push(attrs);
+    expect(await captureSnapshot('boom href', push, { snapshotFn: fakeSnapshot as never })).toBe(true);
+
+    const meta = pushed
+      .flatMap((attrs) => decode(attrs.data!))
+      .find((e) => (e as unknown as { type: number }).type === 4) as unknown as {
+      data: { href: string };
+    };
+    expect(meta.data.href).toBe('http://localhost:3000/behandling/[fnr]/steg');
   });
 });

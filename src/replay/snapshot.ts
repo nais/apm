@@ -18,6 +18,7 @@
 
 import type { eventWithTime } from '@grafana/rrweb';
 
+import { scrubUrl } from '../scrub.js';
 import { hashString } from './hash.js';
 import { buildSnapshotMaskingOptions } from './masking.js';
 import { sendEvents } from './transport.js';
@@ -97,7 +98,9 @@ export async function captureSnapshot(
       {
         type: RRWEB_TYPE_META,
         data: {
-          href: window.location.href,
+          // The Meta href ships verbatim in the first frame; scrub the query
+          // string and PII-shaped path segments before it leaves the browser.
+          href: scrubUrl(window.location.href),
           width: window.innerWidth,
           height: window.innerHeight,
         },
