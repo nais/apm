@@ -13,6 +13,7 @@ describe('resolveConfig', () => {
   beforeEach(() => {
     _resetDevModeWarning();
     vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.spyOn(console, 'error').mockImplementation(() => {});
   });
 
   afterEach(() => {
@@ -21,6 +22,7 @@ describe('resolveConfig', () => {
 
   it('resolves everything from nais meta tags', () => {
     addMeta('nais-app', 'soknad-dagpenger');
+    addMeta('nais-team', 'dagpenger');
     addMeta('nais-cluster', 'prod-gcp');
     addMeta('nais-version', '2026.07.03-abc1234');
     addMeta('nais-telemetry-url', 'https://telemetry.nav.no/collect');
@@ -28,6 +30,7 @@ describe('resolveConfig', () => {
     const config = resolveConfig();
     expect(config).toEqual({
       app: 'soknad-dagpenger',
+      namespace: 'dagpenger',
       environment: 'prod-gcp',
       version: '2026.07.03-abc1234',
       telemetryUrl: 'https://telemetry.nav.no/collect',
@@ -86,8 +89,10 @@ describe('resolveConfig', () => {
   });
 
   it('enters dev mode and warns once when no collector resolves', () => {
-    const first = resolveConfig();
-    const second = resolveConfig();
+    // Provide a namespace so this test isolates the dev-mode warning from the
+    // separate missing-namespace warning.
+    const first = resolveConfig({ namespace: 'team-x' });
+    const second = resolveConfig({ namespace: 'team-x' });
     expect(first.devMode).toBe(true);
     expect(first.app).toBe('unknown-app');
     expect(second.devMode).toBe(true);
@@ -99,6 +104,61 @@ describe('resolveConfig', () => {
     addMeta('nais-app', '');
     vi.stubEnv('NAIS_APP_NAME', 'env-app');
     expect(resolveConfig().app).toBe('env-app');
+  });
+});
+
+describe('resolveConfig namespace (team)', () => {
+  beforeEach(() => {
+    _resetDevModeWarning();
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    document.head.querySelectorAll('meta').forEach((meta) => meta.remove());
+  });
+
+  it('prefers the init option over meta and env', () => {
+    addMeta('nais-team', 'meta-team');
+    vi.stubEnv('NAIS_TEAM', 'env-team');
+    expect(resolveConfig({ namespace: 'opt-team' }).namespace).toBe('opt-team');
+  });
+
+  it('resolves from the nais-team meta tag', () => {
+    addMeta('nais-team', 'dagpenger');
+    expect(resolveConfig().namespace).toBe('dagpenger');
+  });
+
+  it('accepts the nais-namespace meta tag as an alias', () => {
+    addMeta('nais-namespace', 'pensjon');
+    expect(resolveConfig().namespace).toBe('pensjon');
+  });
+
+  it('meta wins over the NAIS_TEAM env', () => {
+    addMeta('nais-team', 'meta-team');
+    vi.stubEnv('NAIS_TEAM', 'env-team');
+    expect(resolveConfig().namespace).toBe('meta-team');
+  });
+
+  it('falls back to the NAIS_TEAM / NAIS_NAMESPACE env', () => {
+    vi.stubEnv('NAIS_NAMESPACE', 'aap');
+    expect(resolveConfig().namespace).toBe('aap');
+  });
+
+  it('loud-errors (prod) and falls back to unknown-team when unresolved', () => {
+    const config = resolveConfig({ app: 'a', environment: 'prod-gcp' });
+    expect(config.namespace).toBe('unknown-team');
+    expect(console.error).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(console.error).mock.calls[0]?.[0]).toContain('namespace (team) is required');
+  });
+
+  it('warns instead of errors in dev mode when unresolved', () => {
+    const config = resolveConfig({ app: 'a' }); // no collector → dev mode
+    expect(config.namespace).toBe('unknown-team');
+    expect(console.error).not.toHaveBeenCalled();
+    expect(
+      vi.mocked(console.warn).mock.calls.some((c) => String(c[0]).includes('namespace (team) is required'))
+    ).toBe(true);
   });
 });
 

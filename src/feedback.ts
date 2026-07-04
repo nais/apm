@@ -45,6 +45,11 @@ export interface CaptureFeedbackOptions {
  * Capture free-text user feedback. Sentry has no direct equivalent — this is
  * `@nais/apm`'s own addition (nais/grafana-apm-app#68 M6). No-op before
  * `init()` (a warning is emitted once by the shared Faro-instance guard).
+ *
+ * PREVIEW — NOT GA. Internal-pilot only for now, gated on the personvernombud
+ * process. The free-text `message` lands in shared Loki, so any UI wired to
+ * this MUST show a clear "do not enter personal information" warning next to
+ * the input. Do not enable on citizen-facing apps without sign-off.
  */
 export function captureFeedback(message: string, options: CaptureFeedbackOptions = {}): void {
   const faro = getFaroInstance();

@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { TransportItemType } from '@grafana/faro-web-sdk';
 import type { ExceptionEvent, LogEvent, Meta, TransportItem } from '@grafana/faro-web-sdk';
 
-import { composeBeforeSend, scrubString, scrubTransportItem } from './scrub.js';
+import { composeBeforeSend, looksLikePii, scrubString, scrubTransportItem } from './scrub.js';
 
 describe('scrubString — fødselsnummer', () => {
   it('masks an fnr without a space', () => {
@@ -156,5 +156,26 @@ describe('composeBeforeSend', () => {
     expect(composeBeforeSend(userHook as never, true)).toBe(userHook);
     const noHook = composeBeforeSend(undefined, true);
     expect(noHook).toBeUndefined();
+  });
+});
+
+describe('looksLikePii', () => {
+  it('flags a fødselsnummer', () => {
+    expect(looksLikePii('01017012345')).toBe(true);
+    expect(looksLikePii('010170 12345')).toBe(true);
+  });
+
+  it('flags an email', () => {
+    expect(looksLikePii('ola.nordmann@nav.no')).toBe(true);
+  });
+
+  it('flags a raw NAV ident (letter + six digits)', () => {
+    expect(looksLikePii('Z994488')).toBe(true);
+  });
+
+  it('passes opaque correlation keys through', () => {
+    expect(looksLikePii('a1b2c3')).toBe(false);
+    expect(looksLikePii('sha256:deadbeefcafef00d')).toBe(false);
+    expect(looksLikePii('01017012345-plus-suffix')).toBe(true); // still contains an fnr
   });
 });

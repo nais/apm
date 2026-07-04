@@ -69,8 +69,12 @@ Initializes the SDK. Safe to call once; a second call warns and returns the exis
 import { init } from '@nais/apm';
 
 init({
-  // All fields optional — each resolves independently if omitted (see below).
+  // Each field resolves independently if omitted (see below). `namespace` (the
+  // owning nais team) is effectively required — telemetry without it can't be
+  // attributed to a team; if it can't be resolved the SDK loud-warns and falls
+  // back to `unknown-team` (it never throws).
   app: 'my-app',
+  namespace: 'my-team',
   version: '2026.07.04-abc1234',
   environment: 'prod-gcp',
   telemetryUrl: 'https://telemetry.nav.no/collect',
@@ -87,19 +91,22 @@ init({
 
 #### Configuration resolution
 
-Each field (`app`, `version`, `environment`, `telemetryUrl`) resolves independently, highest priority first:
+Each field (`app`, `namespace`, `version`, `environment`, `telemetryUrl`) resolves independently, highest priority first:
 
 1. **Explicit `init()` options.**
 2. **nais meta tags** in the served HTML:
    ```html
    <meta name="nais-app" content="my-app">
+   <meta name="nais-team" content="my-team">
    <meta name="nais-cluster" content="prod-gcp">
    <meta name="nais-version" content="2026.07.03-abc1234">
    <meta name="nais-telemetry-url" content="https://telemetry.nav.no/collect">
    ```
-3. **Build-time environment variables** — `NAIS_APP_NAME`, `NAIS_CLUSTER_NAME`, and a version derived from `NAIS_APP_IMAGE`'s tag (or `GITHUB_SHA` if set). These only work when your bundler inlines `process.env.*` (webpack `DefinePlugin`, Vite `define`, Next.js `env`).
+3. **Build-time environment variables** — `NAIS_APP_NAME`, `NAIS_TEAM` (or `NAIS_NAMESPACE`), `NAIS_CLUSTER_NAME`, and a version derived from `NAIS_APP_IMAGE`'s tag (or `GITHUB_SHA` if set). These only work when your bundler inlines `process.env.*` (webpack `DefinePlugin`, Vite `define`, Next.js `env`).
 4. **Collector fallback** — with no explicit/meta collector URL, well-known nais collectors are derived from the cluster name (`prod-*` → `https://telemetry.nav.no/collect`, `dev-*` → `https://telemetry.ekstern.dev.nav.no/collect`).
 5. **Dev mode** — if no collector URL resolves at all (typically localhost), nothing is sent; see [Local development](#local-development).
+
+The `namespace` (owning nais team) is special: the plugin groups and attributes all telemetry by team, so browser telemetry without it can't be reliably attributed. It resolves via the same precedence (`init({ namespace })` → `nais-team`/`nais-namespace` meta → `NAIS_TEAM`/`NAIS_NAMESPACE` env) and is wired to Faro's `app.namespace`, which the collector emits as the `app_namespace` log field. If it can't be resolved the SDK does **not** throw (that would take down your app) — it loud-warns (`console.error` in prod, `console.warn` in dev) and falls back to `unknown-team`.
 
 ### `captureException(error, options?)`
 
@@ -128,13 +135,17 @@ captureMessage('fallback flow used', 'warning'); // 'fatal' | 'error' | 'warning
 
 ### `setUser(user)` / `clearUser()`
 
+NAV operates on **identities**, not emails — and identities are PII that must **not** reach the shared Loki instance (every team shares it). Pass only an **opaque, non-identifying** correlation key: a salted hash of the identity, never a raw NAV ident, fødselsnummer, email, or name.
+
 ```ts
 import { setUser, clearUser } from '@nais/apm';
 
-setUser({ id: hashedSubject, email: 'user@example.com', username: 'jdoe' });
+setUser({ id: hashedSubject }); // hashedSubject = a salted hash, NOT an ident/fnr/email
 // ... on logout:
 clearUser();
 ```
+
+As a safety net, `setUser` defensively drops any `id`/`username`/`attributes` value that looks like PII (fødselsnummer, email, or a raw NAV ident) and warns once; the `email` field is **deprecated** and dropped unconditionally.
 
 ### `setTag(key, value)`
 
@@ -160,6 +171,8 @@ setContext('order', null); // remove it
 ### `captureFeedback(message, options?)`
 
 Free-text user feedback capture — no direct Sentry equivalent, this is `@nais/apm`'s own addition. Feedback is joined to the current session automatically, and optionally to a specific issue via `fingerprint`.
+
+> **Preview — internal-pilot only, not GA.** The free-text `message` lands in the shared Loki instance, so any UI you wire to this **must** show a clear "do not enter personal information" warning next to the input, and — like session replay — it is gated on the personvernombud process for citizen-facing use.
 
 ```ts
 import { captureFeedback } from '@nais/apm';
@@ -205,7 +218,9 @@ Your own `init({ beforeSend })` hook (if any) runs **first** and may drop items 
 
 Opt-out requires an explicit `init({ dangerouslyDisablePiiScrubbing: true })`. If you do that, your team owns the GDPR consequences of everything the app sends to Loki. Scrubbing is regex-based and best-effort — it is a safety net, **not** a GDPR guarantee. Do not put personal data in error messages in the first place.
 
-## Session replay & crash snapshots (opt-in)
+## Session replay & crash snapshots (preview — opt-in, not GA)
+
+> **Preview, not GA.** `sessionReplay` and `screenshotOnError` (like `captureFeedback`) push DOM/snapshot/free-text data that lands in the **shared** Loki instance — they can carry user content into a shared log store. They are **internal-apps-first** and gated on NAV's **personvernombud** (data protection officer) process. Do **not** enable them on citizen-facing apps without sign-off. The masking floor below is a safety net, not a substitute for that assessment.
 
 Two related, disabled-by-default features let a team see what a user's screen looked like around an error:
 

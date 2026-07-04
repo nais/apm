@@ -64,10 +64,14 @@ export interface InitOptions extends ConfigOptions {
    */
   faro?: Partial<BrowserConfig>;
   /**
-   * Error-triggered session replay (nais/grafana-apm-app#58). Off by default —
-   * opt-in per app, and the recording is masked at capture time by a
-   * non-overridable privacy floor (all text and inputs; unmasking only via
-   * explicit `data-apm-unmask` markup). `block` can only tighten masking.
+   * PREVIEW — NOT GA. Opt-in, internal-apps-first, gated on the personvernombud
+   * (data protection officer) process; do NOT enable on citizen-facing apps
+   * without sign-off. Error-triggered session replay (nais/grafana-apm-app#58).
+   * Off by default — it pushes DOM/snapshot data into shared Loki, so it can
+   * carry user content into a shared log store. The recording is masked at
+   * capture time by a non-overridable privacy floor (all text and inputs;
+   * unmasking only via explicit `data-apm-unmask` markup); `block` can only
+   * tighten masking.
    */
   sessionReplay?: {
     enabled?: boolean;
@@ -79,9 +83,12 @@ export interface InitOptions extends ConfigOptions {
     block?: string[];
   };
   /**
-   * Capture one masked DOM snapshot per new error (nais/grafana-apm-app#67).
-   * Works without sessionReplay; automatically off when sessionReplay is
-   * enabled (a recording's checkout already contains the snapshot).
+   * PREVIEW — NOT GA. Opt-in, internal-apps-first, gated on the personvernombud
+   * process; do NOT enable on citizen-facing apps without sign-off. Captures one
+   * masked DOM snapshot per new error (nais/grafana-apm-app#67), which lands in
+   * shared Loki and can carry user content. Works without sessionReplay;
+   * automatically off when sessionReplay is enabled (a recording's checkout
+   * already contains the snapshot).
    */
   screenshotOnError?: boolean;
 }
@@ -107,6 +114,11 @@ export function init(options: InitOptions = {}): Faro {
   const browserConfig: BrowserConfig = {
     app: {
       name: config.app,
+      // The nais team that owns this app. Faro's app model carries `namespace`,
+      // and the Alloy `faro.receiver` emits it as the `app_namespace` field on
+      // every log line — the label the plugin uses to attribute/filter browser
+      // telemetry by team (mirrors span metrics' `service_namespace`).
+      namespace: config.namespace,
       version: config.version,
       environment: config.environment,
       // `release` mirrors `version` so exception grouping and release tagging

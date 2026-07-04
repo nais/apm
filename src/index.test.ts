@@ -22,6 +22,7 @@ describe('init()', () => {
   beforeAll(() => {
     _resetStateForTesting();
     addMeta('nais-app', 'test-app');
+    addMeta('nais-team', 'test-team');
     addMeta('nais-cluster', 'dev-gcp');
     addMeta('nais-version', '1.0.0-test');
     // No nais-telemetry-url meta and dev-gcp WOULD derive one; force dev mode
@@ -34,6 +35,10 @@ describe('init()', () => {
     expect(faro.metas.value.app?.name).toBe('test-app');
     expect(faro.metas.value.app?.version).toBe('1.0.0-test');
     expect(faro.metas.value.app?.environment).toBe('local');
+  });
+
+  it('wires the team onto Faro app.namespace (the app_namespace log field)', () => {
+    expect(faro.metas.value.app?.namespace).toBe('test-team');
   });
 
   it('registers exactly one console-error capture path', () => {

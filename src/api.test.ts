@@ -3,6 +3,7 @@ import { LogLevel } from '@grafana/faro-web-sdk';
 import type { Faro } from '@grafana/faro-web-sdk';
 
 import {
+  _resetUserPiiWarning,
   captureException,
   captureMessage,
   clearUser,
@@ -27,6 +28,7 @@ describe('Sentry-compat API', () => {
 
   beforeEach(() => {
     _resetStateForTesting();
+    _resetUserPiiWarning();
     const fake = createFakeFaro();
     api = fake.api;
     setFaroInstance(fake.faro);
@@ -102,7 +104,7 @@ describe('Sentry-compat API', () => {
   });
 
   describe('user handling', () => {
-    it('setUser forwards to faro.api.setUser', () => {
+    it('setUser forwards an opaque id/username to faro.api.setUser', () => {
       setUser({ id: 'a1b2c3', username: 'ola' });
       expect(api.setUser).toHaveBeenCalledWith({ id: 'a1b2c3', username: 'ola' });
     });
@@ -111,6 +113,49 @@ describe('Sentry-compat API', () => {
       setUser(null);
       clearUser();
       expect(api.resetUser).toHaveBeenCalledTimes(2);
+    });
+
+    it('drops a fødselsnummer id and warns once', () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      setUser({ id: '01017012345', username: 'ola' });
+      expect(api.setUser).toHaveBeenCalledWith({ username: 'ola' });
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(warn.mock.calls[0]?.[0]).toContain('looks like PII');
+      warn.mockRestore();
+    });
+
+    it('drops an email-shaped username', () => {
+      vi.spyOn(console, 'warn').mockImplementation(() => {});
+      setUser({ id: 'opaque', username: 'ola@nav.no' });
+      expect(api.setUser).toHaveBeenCalledWith({ id: 'opaque' });
+    });
+
+    it('drops the deprecated email field unconditionally and warns', () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      setUser({ id: 'opaque', email: 'user@example.com' });
+      expect(api.setUser).toHaveBeenCalledWith({ id: 'opaque' });
+      expect(warn).toHaveBeenCalledTimes(1);
+      warn.mockRestore();
+    });
+
+    it('drops a raw NAV ident id', () => {
+      vi.spyOn(console, 'warn').mockImplementation(() => {});
+      setUser({ id: 'Z994488' });
+      expect(api.setUser).toHaveBeenCalledWith({});
+    });
+
+    it('lets an opaque hashed id and safe attributes through untouched', () => {
+      setUser({ id: 'sha256:deadbeefcafef00d', attributes: { plan: 'premium' } });
+      expect(api.setUser).toHaveBeenCalledWith({
+        id: 'sha256:deadbeefcafef00d',
+        attributes: { plan: 'premium' },
+      });
+    });
+
+    it('drops a PII-shaped attribute value', () => {
+      vi.spyOn(console, 'warn').mockImplementation(() => {});
+      setUser({ id: 'opaque', attributes: { contact: 'user@example.com', plan: 'free' } });
+      expect(api.setUser).toHaveBeenCalledWith({ id: 'opaque', attributes: { plan: 'free' } });
     });
   });
 

@@ -45,6 +45,28 @@ export function scrubString(value: string): string {
   return result;
 }
 
+// A raw NAV ident is a single letter followed by six digits (e.g. `Z994488`).
+// This is a direct identifier of a NAV employee and must never be used as a
+// correlation key — see {@link looksLikePii}.
+const RAW_IDENT = /^[A-Za-z]\d{6}$/;
+
+/**
+ * Best-effort check for whether a *whole* string looks like personal data:
+ * a fødselsnummer, an email, a token-bearing URL param (all reusing the scrub
+ * patterns above) or a raw NAV ident. Used to keep PII out of structured Faro
+ * fields (e.g. `setUser`) that bypass the transport-level scrubber.
+ *
+ * Best-effort by design, exactly like {@link scrubString}: a salted/opaque hash
+ * passes through, but obvious identifiers are caught.
+ */
+export function looksLikePii(value: string): boolean {
+  // If the scrubber would rewrite it, it contained an fnr/email/token.
+  if (scrubString(value) !== value) {
+    return true;
+  }
+  return RAW_IDENT.test(value.trim());
+}
+
 const MAX_DEPTH = 8;
 
 function scrubValue(value: unknown, depth: number, seen: WeakSet<object>): unknown {

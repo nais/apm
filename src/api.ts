@@ -17,6 +17,7 @@ import { LogLevel } from '@grafana/faro-web-sdk';
 import type { MetaUser } from '@grafana/faro-web-sdk';
 
 import { getFaroInstance, getGlobalContext } from './internal.js';
+import { looksLikePii } from './scrub.js';
 
 export interface CaptureExceptionOptions {
   /** Extra key/value context attached to the exception. Values are stringified. */
@@ -104,13 +105,43 @@ export function captureMessage(message: string, level: SeverityLevel = 'info'): 
 }
 
 export interface User {
+  /**
+   * An **opaque, non-identifying** correlation key — e.g. a salted hash of the
+   * user's identity. It MUST NOT be a raw NAV ident, fødselsnummer, email, or
+   * name: identities are PII and MUST NOT reach the shared Loki instance (all
+   * teams share it). PII-shaped values are dropped by {@link setUser}.
+   */
   id?: string;
+  /**
+   * @deprecated Do not send email — it is PII and MUST NOT reach shared Loki.
+   * Any value passed here is dropped by {@link setUser}. Kept only so existing
+   * callers still type-check while they migrate off it.
+   */
   email?: string;
+  /** Opaque, non-identifying label — same rules as {@link User.id}. */
   username?: string;
+  /** Extra opaque attributes. PII-shaped values are scrubbed like other fields. */
   attributes?: Record<string, string>;
 }
 
-/** Set the active user. Replacement for `Sentry.setUser(user)`. */
+let warnedUserPii = false;
+
+/** @internal test helper — resets the once-only setUser PII warning. */
+export function _resetUserPiiWarning(): void {
+  warnedUserPii = false;
+}
+
+/**
+ * Set the active user. Replacement for `Sentry.setUser(user)`.
+ *
+ * Structured Faro user fields BYPASS the transport-level PII scrubber, so this
+ * guards defensively: any `id`/`username`/`attributes` value that looks like
+ * PII (fødselsnummer, email, or a raw NAV ident) is dropped, and `email` is
+ * dropped unconditionally. Pass an opaque, non-identifying id — never a raw
+ * ident, fnr, email, or name.
+ *
+ * @example setUser({ id: hashedSubject }) // hashedSubject = a salted hash, not an ident
+ */
 export function setUser(user: User | null): void {
   const faro = getFaroInstance();
   if (!faro) {
@@ -120,7 +151,50 @@ export function setUser(user: User | null): void {
     faro.api.resetUser();
     return;
   }
-  faro.api.setUser(user satisfies MetaUser);
+
+  const safe: MetaUser = {};
+  let dropped = false;
+
+  for (const key of ['id', 'username'] as const) {
+    const value = user[key];
+    if (value === undefined) {
+      continue;
+    }
+    if (looksLikePii(value)) {
+      dropped = true;
+      continue;
+    }
+    safe[key] = value;
+  }
+
+  // email is PII by definition — never forward it (the field is deprecated).
+  if (user.email !== undefined) {
+    dropped = true;
+  }
+
+  if (user.attributes) {
+    const attributes: Record<string, string> = {};
+    for (const [key, value] of Object.entries(user.attributes)) {
+      if (looksLikePii(value)) {
+        dropped = true;
+        continue;
+      }
+      attributes[key] = value;
+    }
+    if (Object.keys(attributes).length > 0) {
+      safe.attributes = attributes;
+    }
+  }
+
+  if (dropped && !warnedUserPii) {
+    warnedUserPii = true;
+    // eslint-disable-next-line no-console
+    console.warn(
+      '[@nais/apm] setUser value looks like PII (fnr/email) and was dropped — pass an opaque id instead'
+    );
+  }
+
+  faro.api.setUser(safe);
 }
 
 /** Clear the active user. Replacement for `Sentry.setUser(null)`. */

@@ -13,6 +13,14 @@
 export interface ConfigOptions {
   /** Application name; maps to Faro `app.name`. */
   app?: string;
+  /**
+   * The nais team that owns this app (a.k.a. the Kubernetes namespace); maps to
+   * Faro `app.namespace`. The plugin groups and attributes all telemetry by
+   * team, so this is effectively required — browser telemetry without it cannot
+   * be attributed to a team. Resolves from `<meta name="nais-team">` /
+   * `nais-namespace` or the `NAIS_TEAM` / `NAIS_NAMESPACE` env when omitted.
+   */
+  namespace?: string;
   /** Application version / release; maps to Faro `app.version`. */
   version?: string;
   /** Environment (nais cluster, e.g. `prod-gcp`); maps to Faro `app.environment`. */
@@ -23,6 +31,8 @@ export interface ConfigOptions {
 
 export interface ResolvedConfig {
   app: string;
+  /** The nais team (namespace). Falls back to `'unknown-team'` when unresolved. */
+  namespace: string;
   version?: string;
   environment?: string;
   telemetryUrl?: string;
@@ -90,15 +100,19 @@ function telemetryUrlFromCluster(cluster: string | undefined): string | undefine
 }
 
 let warnedDevMode = false;
+let warnedMissingNamespace = false;
 
-/** @internal test helper */
+/** @internal test helper — resets the once-only dev-mode and namespace warnings. */
 export function _resetDevModeWarning(): void {
   warnedDevMode = false;
+  warnedMissingNamespace = false;
 }
 
 export function resolveConfig(options: ConfigOptions = {}): ResolvedConfig {
   const envApp = safeEnv(() => process.env.NAIS_APP_NAME);
   const envCluster = safeEnv(() => process.env.NAIS_CLUSTER_NAME);
+  const envNamespace =
+    safeEnv(() => process.env.NAIS_TEAM) ?? safeEnv(() => process.env.NAIS_NAMESPACE);
   // The commit SHA is the release identity that deploy annotations carry
   // (nais/grafana-apm-app#64: the deploy-annotation action defaults to
   // github.sha), so preferring GITHUB_SHA makes app.version join deploy
@@ -108,6 +122,10 @@ export function resolveConfig(options: ConfigOptions = {}): ResolvedConfig {
   const envVersion = envSha ?? versionFromImage(safeEnv(() => process.env.NAIS_APP_IMAGE));
 
   const app = options.app ?? readMeta('nais-app') ?? envApp;
+  // Accept either `nais-team` (preferred, matches the product term) or the
+  // literal `nais-namespace` meta/env for teams that mirror the k8s name.
+  const resolvedNamespace =
+    options.namespace ?? readMeta('nais-team') ?? readMeta('nais-namespace') ?? envNamespace;
   const environment = options.environment ?? readMeta('nais-cluster') ?? envCluster;
   const version = options.version ?? readMeta('nais-version') ?? envVersion;
   const telemetryUrl =
@@ -123,8 +141,21 @@ export function resolveConfig(options: ConfigOptions = {}): ResolvedConfig {
     );
   }
 
+  // Team (namespace) is required for the plugin to attribute telemetry. We do
+  // NOT throw — a thrown init() would take down the host app — so we loud-warn
+  // (error in prod, warn in dev/console mode) and fall back to 'unknown-team'.
+  if (resolvedNamespace == null && !warnedMissingNamespace) {
+    warnedMissingNamespace = true;
+    const message =
+      '[@nais/apm] namespace (team) is required — set it via init({ namespace }), ' +
+      'a <meta name="nais-team"> tag, or the NAIS_TEAM env';
+    // eslint-disable-next-line no-console
+    (devMode ? console.warn : console.error)(message);
+  }
+
   return {
     app: app ?? 'unknown-app',
+    namespace: resolvedNamespace ?? 'unknown-team',
     version,
     environment,
     telemetryUrl,
