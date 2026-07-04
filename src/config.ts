@@ -85,6 +85,18 @@ export function versionFromImage(image: string | undefined): string | undefined 
 /**
  * Well-known nais collectors, derived from the cluster name as a last resort
  * (https://docs.nais.io/observability/frontend/).
+ *
+ * This is a fallback below the `<meta name="nais-telemetry-url">` tag / env
+ * var, which is the primary, tenant-agnostic resolution path (the platform
+ * injects the correct collector URL for whichever tenant serves the app).
+ * The URLs below are a nav-specific assumption: Nais APM is currently
+ * installed for the nav tenant only, and this fallback hardcodes nav's
+ * collector domain rather than deriving it per tenant. Keep it for now (nav
+ * is the only tenant, and removing it would regress zero-config apps that
+ * rely on it), but it must become tenant-aware — or be dropped in favor of
+ * always requiring the injected meta tag/env — before Nais APM ships to a
+ * tenant other than nav. See docs/multi-tenancy-assumptions.md in the plugin
+ * repo for the full inventory.
  */
 function telemetryUrlFromCluster(cluster: string | undefined): string | undefined {
   if (!cluster) {

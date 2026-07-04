@@ -77,7 +77,7 @@ init({
   namespace: 'my-team',
   version: '2026.07.04-abc1234',
   environment: 'prod-gcp',
-  telemetryUrl: 'https://telemetry.nav.no/collect',
+  telemetryUrl: undefined, // usually omitted — resolved automatically on nais
 
   beforeSend: (item) => item, // runs before the mandatory PII scrubber
   ignoreErrors: [/some noisy vendor error/],
@@ -100,10 +100,11 @@ Each field (`app`, `namespace`, `version`, `environment`, `telemetryUrl`) resolv
    <meta name="nais-team" content="my-team">
    <meta name="nais-cluster" content="prod-gcp">
    <meta name="nais-version" content="2026.07.03-abc1234">
-   <meta name="nais-telemetry-url" content="https://telemetry.nav.no/collect">
+   <meta name="nais-telemetry-url" content="https://telemetry.<tenant>.example/collect">
    ```
+   In practice this tag is injected by the nais platform, not written by hand.
 3. **Build-time environment variables** — `NAIS_APP_NAME`, `NAIS_TEAM` (or `NAIS_NAMESPACE`), `NAIS_CLUSTER_NAME`, and a version derived from `NAIS_APP_IMAGE`'s tag (or `GITHUB_SHA` if set). These only work when your bundler inlines `process.env.*` (webpack `DefinePlugin`, Vite `define`, Next.js `env`).
-4. **Collector fallback** — with no explicit/meta collector URL, well-known nais collectors are derived from the cluster name (`prod-*` → `https://telemetry.nav.no/collect`, `dev-*` → `https://telemetry.ekstern.dev.nav.no/collect`).
+4. **Collector fallback** — with no explicit/meta collector URL, a well-known collector is derived from the cluster name as a last resort. This fallback currently assumes the nav tenant; other tenants should rely on the meta tag/env, which the platform sets automatically.
 5. **Dev mode** — if no collector URL resolves at all (typically localhost), nothing is sent; see [Local development](#local-development).
 
 The `namespace` (owning nais team) is special: the plugin groups and attributes all telemetry by team, so browser telemetry without it can't be reliably attributed. It resolves via the same precedence (`init({ namespace })` → `nais-team`/`nais-namespace` meta → `NAIS_TEAM`/`NAIS_NAMESPACE` env) and is wired to Faro's `app.namespace`, which the collector emits as the `app_namespace` log field. If it can't be resolved the SDK does **not** throw (that would take down your app) — it loud-warns (`console.error` in prod, `console.warn` in dev) and falls back to `unknown-team`.
