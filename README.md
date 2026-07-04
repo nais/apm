@@ -8,7 +8,7 @@ A drop-in browser telemetry SDK for applications running on [nais](https://nais.
 
 `@nais/apm` is published to the **GitHub Package Registry** (GHPR) under the `nais` org, not to npmjs.org (yet).
 
-GHPR requires an authenticated request to resolve *any* package under a scope — including public ones — so even though `@nais/apm` itself is public, installing it needs a GitHub [Personal Access Token](https://github.com/settings/tokens) with the **`read:packages`** scope. This is a one-time setup per machine/CI job.
+GHPR requires an authenticated request to resolve _any_ package under a scope — including public ones — so even though `@nais/apm` itself is public, installing it needs a GitHub [Personal Access Token](https://github.com/settings/tokens) with the **`read:packages`** scope. This is a one-time setup per machine/CI job.
 
 1. Create a classic PAT with the `read:packages` scope (fine-grained tokens work too, as long as they can read packages for the `nais` org).
 2. Add these two lines to your project's `.npmrc` (create the file if it doesn't exist):
@@ -96,11 +96,11 @@ Each field (`app`, `namespace`, `version`, `environment`, `telemetryUrl`) resolv
 1. **Explicit `init()` options.**
 2. **nais meta tags** in the served HTML:
    ```html
-   <meta name="nais-app" content="my-app">
-   <meta name="nais-team" content="my-team">
-   <meta name="nais-cluster" content="prod-gcp">
-   <meta name="nais-version" content="2026.07.03-abc1234">
-   <meta name="nais-telemetry-url" content="https://telemetry.<tenant>.example/collect">
+   <meta name="nais-app" content="my-app" />
+   <meta name="nais-team" content="my-team" />
+   <meta name="nais-cluster" content="prod-gcp" />
+   <meta name="nais-version" content="2026.07.03-abc1234" />
+   <meta name="nais-telemetry-url" content="https://telemetry.<tenant>.example/collect" />
    ```
    In practice this tag is injected by the nais platform, not written by hand.
 3. **Build-time environment variables** — `NAIS_APP_NAME`, `NAIS_TEAM` (or `NAIS_NAMESPACE`), `NAIS_CLUSTER_NAME`, and a version derived from `NAIS_APP_IMAGE`'s tag (or `GITHUB_SHA` if set). These only work when your bundler inlines `process.env.*` (webpack `DefinePlugin`, Vite `define`, Next.js `env`).
@@ -267,6 +267,14 @@ Calling `captureException`/`captureMessage`/`setUser`/etc. before `init()` is a 
 ## Versioning & stability
 
 This package follows semver, but is **pre-1.0**: expect the public API to keep moving (new options, renamed fields, new exports like tracing and React helpers) across `0.x` minor releases. Pin an exact version in your `package.json` and read the [CHANGELOG](./CHANGELOG.md) before upgrading. Breaking changes will be called out there.
+
+## Not yet supported
+
+Planned for later `0.x` releases:
+
+- **Browser tracing** — distributed traces (`@grafana/faro-web-tracing`) are not enabled yet, so browser spans don't reach Tempo through `@nais/apm`. `init()` already sets up the Faro instance a tracing instrumentation would attach to.
+- **`@nais/apm/react`** — a React entry point (an `ErrorBoundary` helper, route-change tracking, and a Next.js client-init helper) is planned but not shipped.
+- **Registry** — published to GitHub Package Registry only; a move to npmjs.org (dropping the `read:packages` token requirement for installs) is under consideration.
 
 ## Development
 
