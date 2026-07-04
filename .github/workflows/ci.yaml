@@ -30,3 +30,19 @@ jobs:
 
       - name: Build
         run: pnpm build
+
+      - name: Verify package contents
+        run: |
+          FILES="$(npm pack --dry-run --json 2>/dev/null \
+            | node -e "const d=JSON.parse(require('fs').readFileSync(0,'utf8')); console.log(d[0].files.map(f=>f.path).join('\n'))")"
+          echo "Packed files:"
+          echo "$FILES"
+          if ! echo "$FILES" | grep -q '^dist/'; then
+            echo "::error::npm pack does not contain any dist/ files — did the build run?"
+            exit 1
+          fi
+          if echo "$FILES" | grep -q '^src/'; then
+            echo "::error::npm pack unexpectedly contains src/ files — check the \"files\" field in package.json"
+            exit 1
+          fi
+          echo "Package contents OK: dist/ present, no src/ leaked into the tarball"
