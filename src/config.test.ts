@@ -48,6 +48,12 @@ describe('resolveConfig', () => {
   });
 
   it('falls back to build-time NAIS_* env vars', () => {
+    // GITHUB_SHA is a real ambient env var set by every GitHub Actions job
+    // (unset locally, always present in CI). It must be cleared here so this
+    // test actually exercises the image-tag fallback instead of incidentally
+    // asserting on whatever commit CI happens to be running — see the
+    // dedicated "prefers GITHUB_SHA" test below for that precedence.
+    vi.stubEnv('GITHUB_SHA', '');
     vi.stubEnv('NAIS_APP_NAME', 'env-app');
     vi.stubEnv('NAIS_CLUSTER_NAME', 'dev-gcp');
     vi.stubEnv('NAIS_APP_IMAGE', 'europe-north1-docker.pkg.dev/nais/env-app:1.2.3-cafebabe');
