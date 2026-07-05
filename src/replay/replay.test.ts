@@ -2,7 +2,14 @@ import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest';
 import { gunzipSync } from 'fflate';
 import type { eventWithTime } from '@grafana/rrweb-types';
 import { buildChunks, encodeEvents, sendEvents, _resetChunkSeqForTesting } from './transport.js';
-import { buildRecordMaskingOptions, buildSnapshotMaskingOptions } from './masking.js';
+import {
+  buildRecordMaskingOptions,
+  buildSnapshotMaskingOptions,
+  maskText,
+  maskInput,
+  MASKED_TOKEN,
+  UNMASK_ATTRIBUTE,
+} from './masking.js';
 import { captureSnapshot, _resetSnapshotStateForTesting } from './snapshot.js';
 import { REPLAY_CHUNK_EVENT_NAME } from './constants.js';
 import {
@@ -127,6 +134,97 @@ describe('masking floor', () => {
     expect(snap.maskAllInputs).toBe(true);
     expect(snap.blockSelector).toContain('.custom-secret');
     expect(snap.blockSelector).toContain('[data-apm-block]');
+  });
+
+  it('wires the fixed-token maskInputFn into both frozen builders', () => {
+    const rec = buildRecordMaskingOptions();
+    const snap = buildSnapshotMaskingOptions();
+    expect(rec.maskInputFn).toBe(maskInput);
+    expect(snap.maskInputFn).toBe(maskInput);
+    // Frozen: overriding the input mask must not silently succeed.
+    expect(() => {
+      (rec as { maskInputFn: unknown }).maskInputFn = () => 'oops';
+    }).toThrow();
+  });
+
+  it('blocks file inputs (a chosen filename is PII, not a masked value)', () => {
+    expect(buildRecordMaskingOptions().blockSelector).toContain('input[type=file]');
+    expect(buildSnapshotMaskingOptions().blockSelector).toContain('input[type=file]');
+  });
+});
+
+describe('masking is NOT length-preserving (#82 Part 2a/2b)', () => {
+  afterEach(() => {
+    document.body.innerHTML = '';
+  });
+
+  it('masks text of different lengths to the exact same fixed token', () => {
+    const el = document.createElement('span');
+    document.body.appendChild(el);
+    const long = maskText('01017012345', el); // 11-char fnr shape
+    const short = maskText('Ola', el); // 5-char-ish
+    expect(long).toBe(short);
+    expect(long).toBe(MASKED_TOKEN);
+    // The old per-char map would have leaked length; it must not anymore.
+    expect(long).not.toContain('*');
+    expect(long.length).not.toBe('01017012345'.length);
+  });
+
+  it('masks input values of different lengths to the exact same fixed token', () => {
+    const input = document.createElement('input');
+    const long = maskInput('secret-value-01017012345', input);
+    const short = maskInput('hi', input);
+    expect(long).toBe(short);
+    expect(long).toBe(MASKED_TOKEN);
+  });
+
+  it('leaves whitespace-only nodes untouched (never fabricates content)', () => {
+    const el = document.createElement('span');
+    expect(maskText('   ', el)).toBe('   ');
+    expect(maskInput('', document.createElement('input'))).toBe('');
+  });
+});
+
+describe('data-apm-unmask blast-radius guardrail (#82 Part 2d)', () => {
+  afterEach(() => {
+    document.body.innerHTML = '';
+    vi.restoreAllMocks();
+  });
+
+  it('dev-warns when data-apm-unmask sits on a large subtree, but still unmasks (warn-only)', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const container = document.createElement('main');
+    container.setAttribute(UNMASK_ATTRIBUTE, '');
+    // A large subtree well above the warn threshold.
+    for (let i = 0; i < 50; i++) {
+      container.appendChild(document.createElement('div'));
+    }
+    const leaf = document.createElement('span');
+    leaf.textContent = 'Ola Nordmann';
+    container.appendChild(leaf);
+    document.body.appendChild(container);
+
+    // Warn-only: the text is STILL returned unmasked (we never fail closed).
+    expect(maskText('Ola Nordmann', leaf)).toBe('Ola Nordmann');
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('data-apm-unmask'));
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('entire subtree'));
+
+    // Deduped: masking more text under the same unmask element warns only once.
+    warn.mockClear();
+    expect(maskText('another', leaf)).toBe('another');
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it('does NOT warn for a small, leaf-scoped unmask (the intended usage)', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const leaf = document.createElement('span');
+    leaf.setAttribute(UNMASK_ATTRIBUTE, '');
+    leaf.textContent = 'safe label';
+    document.body.appendChild(leaf);
+
+    expect(maskText('safe label', leaf)).toBe('safe label');
+    expect(warn).not.toHaveBeenCalled();
   });
 });
 
