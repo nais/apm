@@ -1,6 +1,6 @@
 {
   "name": "@nais/apm",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Opinionated @grafana/faro-web-sdk wrapper with a Sentry-like DX for applications on nais",
   "license": "MIT",
   "type": "module",
