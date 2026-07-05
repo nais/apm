@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.2.0](https://github.com/nais/apm/compare/apm-v0.1.0...apm-v0.2.0) (2026-07-05)
+
+
+### Features
+
+* @nais/apm/react entry point + opt-in browser tracing (v0.2.0) ([23c5c17](https://github.com/nais/apm/commit/23c5c17a654d6415b8ffebd59d541acff37a1365))
+
+
+### Documentation
+
+* reference nais/grafana-apm-app[#86](https://github.com/nais/apm/issues/86) instead of the deleted multi-tenancy doc ([f6c3ac4](https://github.com/nais/apm/commit/f6c3ac4306f1a54af8d7f097381c20c809912d4d))
+
 ## 0.1.0 (2026-07-04)
 
 
