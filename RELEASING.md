@@ -82,6 +82,25 @@ There is intentionally **no** manual publish workflow — removing it prevents a
 double-publishes. If you ever need to publish out of band, do it locally against a clean
 checkout of the tag with `pnpm publish` and a token that can write to the org's GHPR.
 
+## Dependency pins (load-bearing — read before bumping)
+
+Two pin constraints protect the replay privacy floor. Treat both as load-bearing.
+
+1. **`@grafana/rrweb` and `@grafana/rrweb-snapshot` are pinned to the EXACT version
+   `2.0.0-grafana.2`** (no `^`). This is a Grafana *fork* of rrweb, imported only by
+   `src/replay/*`. The non-overridable masking floor in `src/replay/masking.ts` is written
+   against this fork's specific behavior (e.g. it doesn't expose `maskAttributeFn`, which is
+   why `src/replay/transport.ts` scrubs the serialized payload as a backstop). **Moving this
+   pin can silently change masking → a PII regression in shared Loki.** Do not bump or widen
+   it without re-validating the masking floor.
+
+2. **Keep the whole `@grafana/faro-*` family on one version.** `faro-web-sdk`,
+   `faro-web-tracing`, and `faro-react` must match (currently `2.8.2`). Adding React (#79)
+   and tracing (#80) for v0.2.0 needed **no faro bump** precisely because both already exist
+   at 2.8.2 and neither depends on rrweb — so v0.2.0 never touched the replay fork pin. A
+   future `faro-web-sdk` upgrade **could transitively move rrweb**, so **re-validate replay
+   masking before any faro bump**, and bump the three faro packages together.
+
 ## A note on npm provenance
 
 We publish to GHPR, which does **not** support npm build provenance/attestations — those
