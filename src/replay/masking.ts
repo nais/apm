@@ -96,9 +96,14 @@ function maskToToken(value: string): string {
   return /\S/.test(value) ? MASKED_TOKEN : value;
 }
 
+// Ambient declaration so we can reference `process.env.NODE_ENV` literally
+// (required for bundler inlining) without depending on @types/node — this is a
+// browser SDK whose build tsconfig has no node types. Mirrors `config.ts`.
+declare const process: { env: Record<string, string | undefined> } | undefined;
+
 function isDevMode(): boolean {
   try {
-    return typeof process !== 'undefined' && process.env != null && process.env.NODE_ENV !== 'production';
+    return typeof process !== 'undefined' && process?.env?.NODE_ENV !== 'production';
   } catch {
     return false;
   }
