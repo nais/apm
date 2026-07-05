@@ -7,8 +7,8 @@ create a tag or GitHub Release yourself. You only **merge PRs**.
 ## The flow, end to end
 
 1. **Land work on `main` with Conventional Commits.** Every PR is squash/merged with a
-   conventional message (`feat: …`, `fix: …`, `docs: …`, etc.). The `Commitlint`
-   workflow (`.github/workflows/commitlint.yml`) enforces this on every PR.
+   conventional message (`feat: …`, `fix: …`, `docs: …`, etc.). The `commitlint`
+   job in the CI workflow (`.github/workflows/ci.yaml`) enforces this on every PR.
 2. **release-please maintains a "Release PR".** On each push to `main`, the `Release`
    workflow (`.github/workflows/release-please.yml`) runs release-please. It opens (or
    updates) a single **Release PR** titled like `chore(main): release 0.2.0` that:
@@ -41,8 +41,8 @@ release-please reports it created a release, that job checks out the new tag, re
 
 ## What CI gates exist
 
-**On every PR (`commitlint.yml`):** every commit in the PR must be a valid Conventional
-Commit — this is what makes release-please's version inference trustworthy.
+**On every PR (`commitlint` job in `ci.yaml`):** every commit in the PR must be a valid
+Conventional Commit — this is what makes release-please's version inference trustworthy.
 
 **On every PR / push to `main` (`ci.yaml`):**
 
