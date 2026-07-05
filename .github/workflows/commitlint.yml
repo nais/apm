@@ -6,6 +6,8 @@ name: Commitlint
 on:
   pull_request:
     branches: [main]
+  # Run on merge queue branches so the required `commitlint` check reports there.
+  merge_group:
 
 permissions:
   contents: read
@@ -33,6 +35,10 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Lint PR commit messages
+        # PR-only: merge_group has no pull_request payload for the commit range,
+        # and the commits were already linted on the PR. On the queue this step
+        # skips, so the job still succeeds and the required check reports green.
+        if: github.event_name == 'pull_request'
         run: >
           pnpm exec commitlint
           --from "${{ github.event.pull_request.base.sha }}"
