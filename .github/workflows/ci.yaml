@@ -5,6 +5,13 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  # Run on the merge-queue branch so the single required `ci-ok` check reports
+  # there too — without this the queue would deadlock waiting for a check that
+  # never runs.
+  merge_group:
+
+permissions:
+  contents: read
 
 jobs:
   test:
@@ -79,3 +86,55 @@ jobs:
             exit 1
           fi
           echo "Bundle size guard OK: init entry is faro-react/OTel-free; react ErrorBoundary entry is OTel-free"
+
+  commitlint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # Need the full range base..head to lint every commit in the PR.
+          fetch-depth: 0
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Enforce Conventional Commits so release-please's version inference stays
+      # trustworthy. This only runs on real PRs: on `merge_group` the base/head
+      # PR SHAs are null, and the commits were already linted on their PR, so the
+      # step skips and the job succeeds.
+      - name: Lint PR commit messages
+        if: github.event_name == 'pull_request'
+        run: >
+          pnpm exec commitlint
+          --from "${{ github.event.pull_request.base.sha }}"
+          --to "${{ github.event.pull_request.head.sha }}"
+          --verbose
+
+  # Single required status check. It aggregates every other job so the branch
+  # ruleset needs to require only `ci-ok`, and it reports identically on
+  # `pull_request` and `merge_group`. `if: !cancelled()` makes it run even when a
+  # need failed, so it can turn that into a definitive failure.
+  ci-ok:
+    runs-on: ubuntu-latest
+    needs: [test, commitlint]
+    if: ${{ !cancelled() }}
+    steps:
+      - name: Aggregate job results
+        run: |
+          echo "test:       ${{ needs.test.result }}"
+          echo "commitlint: ${{ needs.commitlint.result }}"
+          if [ "${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}" = "true" ]; then
+            echo "::error::One or more required jobs failed or were cancelled."
+            exit 1
+          fi
+          echo "All required jobs succeeded or were skipped — ci-ok passes."
