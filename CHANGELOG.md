@@ -1,5 +1,33 @@
 # Changelog
 
+## [Unreleased]
+
+### BREAKING (PREVIEW)
+
+- **Session replay now defaults to the `events` tier (no DOM)**
+  ([#82](https://github.com/nais/grafana-apm-app/issues/82)). The PREVIEW
+  `sessionReplay` option gains a distinct privacy-tier field
+  (`tier?: 'events' | 'wireframe' | 'dom'`) that is independent of the capture
+  trigger (`mode`, unchanged). `sessionReplay: { enabled: true }` with `tier`
+  omitted now captures a lightweight, DOM-free **interaction timeline**
+  (navigation, clicks, rage-clicks, coarse scroll — tag/role/coords/timestamps
+  only) instead of the masked rrweb DOM recording it produced before.
+
+  There is structurally no DOM node tree / `FullSnapshot` on the default path,
+  so nothing can leak beyond URLs (which are already `scrubUrl`-sanitized). A
+  one-time `console.warn` is emitted for enabled pilots relying on the old
+  default.
+
+  **Migration:** to keep the full masked DOM recording, pass
+  `sessionReplay: { enabled: true, tier: 'dom' }` (still personvernombud-gated).
+  `screenshotOnError` is likewise folded into the tier model: it produces a DOM
+  snapshot only with `tier: 'dom'`, otherwise it degrades to a text-free
+  events-tier breadcrumb (previously it emitted a masked DOM snapshot with no
+  consent gate).
+
+  This is contractually acceptable because `sessionReplay`/`screenshotOnError`
+  are explicitly PREVIEW (not GA), but the ~handful of known pilots must be told.
+
 ## [0.2.0](https://github.com/nais/apm/compare/apm-v0.1.0...apm-v0.2.0) (2026-07-05)
 
 
