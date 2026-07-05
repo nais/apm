@@ -3,6 +3,15 @@ name: Release
 on:
   push:
     branches: [main]
+  # Manual re-publish escape hatch: (re)test, build and publish an already-created
+  # release to GHPR — e.g. if this publish job failed after release-please had
+  # already cut the tag/release.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to (re)publish, e.g. apm-v0.2.0'
+        required: true
+        type: string
 
 # release-please opens/labels the Release PR and creates tags + GitHub Releases;
 # the publish job additionally needs to write packages to GHPR. Least-privilege is
@@ -27,6 +36,9 @@ jobs:
   # ---------------------------------------------------------------------------
   release-please:
     runs-on: ubuntu-latest
+    # Only on a push to main. A manual workflow_dispatch is a publish-only re-run,
+    # so this job is skipped there (no Release-PR side effects).
+    if: github.event_name == 'push'
     outputs:
       releases_created: ${{ steps.release.outputs.releases_created }}
       tag_name: ${{ steps.release.outputs.tag_name }}
@@ -51,16 +63,24 @@ jobs:
   # ---------------------------------------------------------------------------
   publish:
     needs: release-please
-    if: needs.release-please.outputs.releases_created == 'true'
+    # !cancelled() lets this run on a manual dispatch even though release-please
+    # is skipped there. The tag guard below still gates it: auto-publish only when
+    # a release was cut, manual publish only on workflow_dispatch.
+    if: |
+      !cancelled() &&
+      (needs.release-please.outputs.releases_created == 'true' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
+    env:
+      # Auto-release: the tag release-please just cut. Manual dispatch: the tag input.
+      RELEASE_TAG: ${{ needs.release-please.outputs.tag_name || inputs.tag }}
     steps:
       - name: Checkout release tag
         uses: actions/checkout@v4
         with:
-          ref: ${{ needs.release-please.outputs.tag_name }}
+          ref: ${{ env.RELEASE_TAG }}
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -68,7 +88,9 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          # Pinned >= 22.12.0: @commitlint/cli (a devDependency installed below)
+          # declares engines.node ">=22.12.0"; node 20 is also EOL on runners.
+          node-version: '22.12.0'
           cache: pnpm
           registry-url: https://npm.pkg.github.com
           scope: '@nais'
@@ -79,10 +101,14 @@ jobs:
       - name: Verify package version matches release tag
         run: |
           PKG_VERSION="$(node -p "require('./package.json').version")"
-          TAG="${{ needs.release-please.outputs.tag_name }}"
-          EXPECTED="${TAG#v}"
+          TAG="$RELEASE_TAG"
+          # Tags are 'apm-v<semver>' (release-please derives the component from the
+          # package name). Strip the component prefix and the leading 'v' to get the
+          # bare version; also tolerate a plain 'v<semver>' tag.
+          EXPECTED="${TAG#apm-}"
+          EXPECTED="${EXPECTED#v}"
           if [ "$PKG_VERSION" != "$EXPECTED" ]; then
-            echo "::error::package.json version ($PKG_VERSION) does not match release tag $TAG (expected $EXPECTED)."
+            echo "::error::package.json version ($PKG_VERSION) does not match release tag $TAG (expected version $EXPECTED)."
             exit 1
           fi
           echo "package.json version $PKG_VERSION matches release tag $TAG"
