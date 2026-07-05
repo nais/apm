@@ -1,9 +1,11 @@
 /**
  * @nais/apm — opinionated Faro wrapper with a Sentry-like DX for nais apps.
  *
- * Phase 0 surface: `init`, `captureException`, `captureMessage`, `setUser`,
- * `clearUser`, `setTag`, `setContext`. Tracing and React helpers
- * (`@nais/apm/react`) are intentionally NOT part of Phase 0.
+ * Root surface: `init`, `captureException`, `captureMessage`, `setUser`,
+ * `clearUser`, `setTag`, `setContext`, and opt-in browser tracing
+ * (`init({ tracing: true })`, lazily loaded). React helpers live in the
+ * separate `@nais/apm/react` entry point so this root stays free of React and
+ * the OpenTelemetry tracing tree.
  */
 
 import {
@@ -91,6 +93,20 @@ export interface InitOptions extends ConfigOptions {
    * already contains the snapshot).
    */
   screenshotOnError?: boolean;
+  /**
+   * Opt-in browser tracing (nais/grafana-apm-app#80). Off by default. When
+   * enabled, `@grafana/faro-web-tracing` is lazily loaded (kept out of the
+   * bundle otherwise) and distributed-trace headers are propagated so browser
+   * spans join backend traces in Tempo.
+   *
+   * `true` enables tracing with the mandatory propagation floor (same-origin +
+   * `*.nav.no` only). Pass an object with `propagateExtraOrigins` to ALSO
+   * propagate trace headers to additional origins — these are appended to the
+   * floor and can never replace or empty it (a security restriction: trace
+   * headers must not leak to arbitrary third parties). The floor is not
+   * reachable through the `faro` escape hatch.
+   */
+  tracing?: boolean | { propagateExtraOrigins?: (string | RegExp)[] };
 }
 
 /**
@@ -98,8 +114,9 @@ export interface InitOptions extends ConfigOptions {
  * and collector URL are resolved from nais meta tags or build-time env; with
  * no collector resolved (local dev) all telemetry is echoed to the console.
  *
- * Note: tracing is not part of Phase 0 — a `tracing` option will arrive with
- * `@grafana/faro-web-tracing` lazy-loading in a later release.
+ * Opt into distributed tracing with `init({ tracing: true })`; the tracing
+ * machinery (`@grafana/faro-web-tracing`) is lazily loaded so it stays out of
+ * the bundle when tracing is not enabled.
  */
 export function init(options: InitOptions = {}): Faro {
   const existing = getStoredFaro();
@@ -159,6 +176,22 @@ export function init(options: InitOptions = {}): Faro {
 
   const faro = initializeFaro(browserConfig);
   setFaroInstance(faro);
+
+  // Opt-in browser tracing. Lazily imported (like replay) so faro-web-tracing
+  // and its OpenTelemetry dependency tree stay out of the bundle of apps that
+  // do not enable tracing. The mandatory header-propagation floor lives in
+  // tracing.ts and cannot be overridden here.
+  if (options.tracing) {
+    const tracingOptions =
+      typeof options.tracing === 'object' ? options.tracing : undefined;
+    void import('./tracing.js')
+      .then(({ startTracing }) =>
+        startTracing(faro, {
+          propagateExtraOrigins: tracingOptions?.propagateExtraOrigins,
+        })
+      )
+      .catch(() => {});
+  }
 
   const replay = options.sessionReplay;
   const wantRecording = replay?.enabled === true;

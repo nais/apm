@@ -264,6 +264,68 @@ Calling `captureException`/`captureMessage`/`setUser`/etc. before `init()` is a 
 
 `init({ faro: { ... } })` accepts raw Faro `BrowserConfig` overrides for anything this package doesn't expose directly. `beforeSend` is the one exception — it stays composed with the mandatory PII scrubber rather than being fully overridden.
 
+## Browser tracing
+
+Opt in with `init({ tracing: true })`. This lazily loads `@grafana/faro-web-tracing` (kept out of your bundle unless you enable it) and starts propagating W3C trace-context headers so browser spans join their backend traces in Tempo.
+
+```ts
+init({ tracing: true });
+```
+
+Trace headers are only ever sent to **nais-owned backends**: a non-overridable floor restricts propagation to the app's own origin and any `https://*.nav.no` host. You can add more origins, but you can never remove the floor (and it is not reachable through the `faro` escape hatch):
+
+```ts
+init({ tracing: { propagateExtraOrigins: ['https://api.partner.example'] } });
+```
+
+## React — `@nais/apm/react`
+
+A separate entry point with React helpers. React and `react-router` are optional peer dependencies; importing this entry requires them (plus `@grafana/faro-react` for the React Router v6 wiring). The root `@nais/apm` entry stays free of React and OpenTelemetry.
+
+**Error boundary** — catches render errors and reports them once through `captureException` (so they get the SDK's fingerprint/context pipeline):
+
+```tsx
+import { ApmErrorBoundary } from '@nais/apm/react';
+
+<ApmErrorBoundary fingerprint="checkout" fallback={<p>Something went wrong.</p>}>
+  <Checkout />
+</ApmErrorBoundary>;
+```
+
+There is also a `withApmErrorBoundary(Component, props?)` HOC.
+
+**Route tracking (React Router v6)** — call once after `init()`, passing your own react-router-dom exports, then render `<ApmRoutes>` in place of `<Routes>`:
+
+```tsx
+import { createRoutesFromChildren, matchRoutes, Routes, useLocation, useNavigationType } from 'react-router-dom';
+import { enableApmReactRouterV6, ApmRoutes } from '@nais/apm/react';
+
+enableApmReactRouterV6({ createRoutesFromChildren, matchRoutes, Routes, useLocation, useNavigationType });
+```
+
+**Route tracking (Next.js App Router)** — use the `useApmRouteTracking` hook in a client component:
+
+```tsx
+'use client';
+import { usePathname, useSearchParams } from 'next/navigation';
+import { useApmRouteTracking } from '@nais/apm/react';
+
+export function ApmRouteTracker() {
+  useApmRouteTracking(usePathname(), useSearchParams());
+  return null;
+}
+```
+
+**Next.js client init** — `initNaisAPMClient` is the entry for Next 15+ `instrumentation-client.ts` (and the Pages Router `_app.tsx`). It no-ops on the server and is idempotent under StrictMode:
+
+```ts
+// instrumentation-client.ts
+import { initNaisAPMClient } from '@nais/apm/react';
+initNaisAPMClient({ namespace: 'my-team', tracing: true });
+```
+
+React Router v5/v7 and the data-router variants are follow-ups.
+
 ## Versioning & stability
 
 This package follows semver, but is **pre-1.0**: expect the public API to keep moving (new options, renamed fields, new exports like tracing and React helpers) across `0.x` minor releases. Pin an exact version in your `package.json` and read the [CHANGELOG](./CHANGELOG.md) before upgrading. Breaking changes will be called out there.
@@ -272,8 +334,7 @@ This package follows semver, but is **pre-1.0**: expect the public API to keep m
 
 Planned for later `0.x` releases:
 
-- **Browser tracing** — distributed traces (`@grafana/faro-web-tracing`) are not enabled yet, so browser spans don't reach Tempo through `@nais/apm`. `init()` already sets up the Faro instance a tracing instrumentation would attach to.
-- **`@nais/apm/react`** — a React entry point (an `ErrorBoundary` helper, route-change tracking, and a Next.js client-init helper) is planned but not shipped.
+- **React Router v5/v7 & data routers** — route tracking currently covers React Router v6 and the Next.js App Router.
 - **Registry** — published to GitHub Package Registry only; a move to npmjs.org (dropping the `read:packages` token requirement for installs) is under consideration.
 
 ## Development
