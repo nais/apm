@@ -46,3 +46,36 @@ jobs:
             exit 1
           fi
           echo "Package contents OK: dist/ present, no src/ leaked into the tarball"
+
+      - name: Bundle size guard (tree-shaking)
+        run: |
+          # Prove the lazy-loading / tree-shaking contract:
+          #   (a) the root `init` entry pulls neither faro-react nor the
+          #       OpenTelemetry tracing tree (tracing is a lazy import()); and
+          #   (b) the `@nais/apm/react` ErrorBoundary entry pulls no OpenTelemetry
+          #       tracing tree. A failure of (b) is the trigger for the
+          #       hand-rolled-ErrorBoundary contingency.
+          set -euo pipefail
+          FIX="$(mktemp -d)"
+          printf "import { init } from '%s/dist/index.js';\nconsole.log(init);\n" "$PWD" > "$FIX/a.js"
+          printf "import { ApmErrorBoundary } from '%s/dist/react/index.js';\nconsole.log(ApmErrorBoundary);\n" "$PWD" > "$FIX/b.js"
+          pnpm exec esbuild "$FIX/a.js" "$FIX/b.js" \
+            --bundle --splitting --format=esm --outdir="$FIX/out" --log-level=error
+
+          fail=0
+          if grep -Eq '@opentelemetry|TracingInstrumentation' "$FIX/out/a.js"; then
+            echo "::error::(a) root init entry statically pulls the OpenTelemetry tracing tree — tracing must stay a lazy import()"
+            fail=1
+          fi
+          if grep -Eq '@grafana/faro-react|ReactIntegration' "$FIX/out/a.js"; then
+            echo "::error::(a) root init entry pulls faro-react — the React entry must stay separate"
+            fail=1
+          fi
+          if grep -Eq '@opentelemetry|TracingInstrumentation' "$FIX/out/b.js"; then
+            echo "::error::(b) @nais/apm/react ErrorBoundary entry pulls the OpenTelemetry tracing tree — see the hand-rolled ErrorBoundary contingency"
+            fail=1
+          fi
+          if [ "$fail" -ne 0 ]; then
+            exit 1
+          fi
+          echo "Bundle size guard OK: init entry is faro-react/OTel-free; react ErrorBoundary entry is OTel-free"
