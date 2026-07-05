@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.3.0](https://github.com/nais/apm/compare/apm-v0.2.0...apm-v0.3.0) (2026-07-05)
+
+
+### Features
+
+* **replay:** safe-default events tier for session replay ([#82](https://github.com/nais/apm/issues/82)) ([#7](https://github.com/nais/apm/issues/7)) ([754974b](https://github.com/nais/apm/commit/754974b69f17aef006e334ea99930b9d009c97bf))
+
+
+### Bug Fixes
+
+* **feedback:** bound email length to close CodeQL ReDoS finding ([#5](https://github.com/nais/apm/issues/5)) ([e083c73](https://github.com/nais/apm/commit/e083c73d946d6fba904a119e422cd67d1a39d00a))
+
 ## [Unreleased]
 
 ### BREAKING (PREVIEW)
