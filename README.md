@@ -223,17 +223,33 @@ Opt-out requires an explicit `init({ dangerouslyDisablePiiScrubbing: true })`. I
 
 > **Preview, not GA.** `sessionReplay` and `screenshotOnError` (like `captureFeedback`) push DOM/snapshot/free-text data that lands in the **shared** Loki instance — they can carry user content into a shared log store. They are **internal-apps-first** and gated on NAV's **personvernombud** (data protection officer) process. Do **not** enable them on citizen-facing apps without sign-off. The masking floor below is a safety net, not a substitute for that assessment.
 
-Two related, disabled-by-default features let a team see what a user's screen looked like around an error:
+Two related, disabled-by-default features let a team see what a user did around an error:
 
-- **`sessionReplay`** — records the session (via `rrweb`) and, in the default `on-error` mode, only ships the last ~60–120 seconds once an error actually occurs (nothing leaves the browser before that). `mode: 'always'` streams continuously instead, gated by `sampleRate`.
-- **`screenshotOnError`** — captures one masked DOM snapshot per new error (throttled, capped per session), without recording a full session. Automatically disabled when `sessionReplay` is on, since a recording's checkout already contains the same information.
+- **`sessionReplay`** — captures a session timeline. It has two independent knobs:
+  - **`tier`** — _what_ is captured (the privacy tier):
+    - `'events'` **(default)** — a lightweight **interaction timeline** derived from DOM events: navigation, clicks, rage-clicks, and coarse scroll, carrying only element **tag/role**, click **coordinates**, and **timestamps**. There is **no DOM node tree and no `rrweb` capture at all** on this path — structurally nothing to leak beyond URLs (which are scrubbed). This tier is safe by construction and does not pull `rrweb` into your bundle.
+    - `'wireframe'` — reserved (planned); currently falls back to `'events'`.
+    - `'dom'` — the full **masked DOM recording** (via `rrweb`). This is the pre-existing behavior and pushes DOM data into shared Loki, so it is the one tier gated on the personvernombud process.
+  - **`mode`** — _when_ the timeline is shipped (the capture trigger, unchanged): `'on-error'` (default) buffers in memory and ships only once an error occurs; `'always'` streams continuously, gated by `sampleRate`.
+- **`screenshotOnError`** — folded into the tier model: with `tier: 'dom'` it captures one masked DOM snapshot per new error (throttled, capped per session); otherwise it degrades to a text-free **events-tier breadcrumb** (URL + viewport, no node tree). Adds nothing when a session-replay collector/recorder is already active for the session.
+
+> **Preview default change.** `sessionReplay: { enabled: true }` with no `tier` now resolves to the **`events`** tier (no DOM). Previously it produced the masked DOM recording. Pass `tier: 'dom'` to keep DOM capture. A one-time `console.warn` flags this.
 
 ```ts
+// Safe default: DOM-free interaction timeline.
 init({
   sessionReplay: {
     enabled: true,
     mode: 'on-error', // or 'always'
     sampleRate: 0.5, // fraction of sessions recorded, 0..1
+  },
+});
+
+// Full masked DOM recording (personvernombud-gated).
+init({
+  sessionReplay: {
+    enabled: true,
+    tier: 'dom',
     block: ['.no-record-me'], // extra CSS selectors to block; tighten-only
   },
 });
@@ -241,7 +257,7 @@ init({
 
 **These features are opt-in for a reason: a team must decide, deliberately, to turn on screen recording for its own users.** This is not a technical toggle to flip lightly — it reflects NAV's personvernombud (data protection officer) process, and each team is responsible for making that call for its own application and users, in line with its own privacy assessment.
 
-To make that decision safer regardless of which way it goes, both features share a **non-overridable masking floor**, applied in the browser before any byte leaves the user's machine:
+The events tier avoids this exposure by construction — it never serializes the DOM, so there is no text/input/node content to mask. The masking floor below applies to the **DOM tier** (`tier: 'dom'` and the `tier: 'dom'` `screenshotOnError` snapshot), and is a **non-overridable** floor applied in the browser before any byte leaves the user's machine:
 
 - every form input value is masked, with no exceptions — inputs can never be unmasked, not even via the allowlist below;
 - all text is masked, except elements explicitly marked with a `data-apm-unmask` attribute;

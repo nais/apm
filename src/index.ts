@@ -19,6 +19,7 @@ import { resolveConfig } from './config.js';
 import type { ConfigOptions } from './config.js';
 import { NaisConsoleInstrumentation } from './console.js';
 import { getStoredFaro, setFaroInstance } from './internal.js';
+import { normalizeSessionReplay } from './replay/options.js';
 import { composeBeforeSend } from './scrub.js';
 
 export { captureException, captureMessage, setUser, clearUser, setTag, setContext } from './api.js';
@@ -66,31 +67,51 @@ export interface InitOptions extends ConfigOptions {
    */
   faro?: Partial<BrowserConfig>;
   /**
-   * PREVIEW — NOT GA. Opt-in, internal-apps-first, gated on the personvernombud
-   * (data protection officer) process; do NOT enable on citizen-facing apps
-   * without sign-off. Error-triggered session replay (nais/grafana-apm-app#58).
-   * Off by default — it pushes DOM/snapshot data into shared Loki, so it can
-   * carry user content into a shared log store. The recording is masked at
-   * capture time by a non-overridable privacy floor (all text and inputs;
-   * unmasking only via explicit `data-apm-unmask` markup); `block` can only
-   * tighten masking.
+   * PREVIEW — NOT GA. Opt-in, internal-apps-first. Session replay
+   * (nais/grafana-apm-app#58, #82). Off by default.
+   *
+   * Two independent knobs:
+   *
+   *   - `tier` — the PRIVACY TIER, i.e. WHAT is captured:
+   *       - `'events'` (default): a lightweight interaction timeline derived
+   *         from DOM events — NO DOM node tree, structurally nothing to leak
+   *         beyond (already-scrubbed) URLs. Safe by construction.
+   *       - `'wireframe'`: reserved (Phase 3 — currently falls back to events).
+   *       - `'dom'`: the full masked DOM recording (rrweb). Pushes DOM data into
+   *         shared Loki, so it is gated on the personvernombud (data protection
+   *         officer) process — do NOT enable on citizen-facing apps without
+   *         sign-off. Masked at capture time by a non-overridable privacy floor
+   *         (all text and inputs; unmasking only via explicit `data-apm-unmask`
+   *         markup); `block` can only tighten masking.
+   *
+   *   - `mode` — the CAPTURE TRIGGER, i.e. WHEN the timeline is shipped
+   *     (unchanged): `'on-error'` (default) buffers in memory and sends only
+   *     once an error occurs; `'always'` streams continuously.
+   *
+   * BREAKING (preview): `enabled:true` with `tier` omitted now resolves to
+   * `'events'`, not the old masked-DOM capture. Pass `tier:'dom'` to keep DOM.
    */
   sessionReplay?: {
     enabled?: boolean;
-    /** 'on-error' (default): buffer in memory, send only once an error occurs. */
+    /** Privacy tier — WHAT is captured. Default `'events'` (no DOM). */
+    tier?: 'events' | 'wireframe' | 'dom';
+    /** Capture trigger — WHEN the timeline ships. 'on-error' (default) or 'always'. */
     mode?: 'on-error' | 'always';
     /** Fraction of sessions recorded, 0..1 (default 1). */
     sampleRate?: number;
-    /** Extra CSS selectors to block entirely (tighten-only). */
+    /** Extra CSS selectors to block entirely (tighten-only; DOM tier). */
     block?: string[];
   };
   /**
-   * PREVIEW — NOT GA. Opt-in, internal-apps-first, gated on the personvernombud
-   * process; do NOT enable on citizen-facing apps without sign-off. Captures one
-   * masked DOM snapshot per new error (nais/grafana-apm-app#67), which lands in
-   * shared Loki and can carry user content. Works without sessionReplay;
-   * automatically off when sessionReplay is enabled (a recording's checkout
-   * already contains the snapshot).
+   * PREVIEW — NOT GA. Opt-in. Capture something on the FIRST error, folded into
+   * the `sessionReplay.tier` model (nais/grafana-apm-app#67, #82):
+   *   - with `sessionReplay.tier:'dom'` (and no full recording running): one
+   *     masked DOM snapshot per new error (throttled, capped, personvernombud-
+   *     gated — it lands in shared Loki and can carry user content);
+   *   - otherwise (the events-tier default): a text-free events-tier breadcrumb
+   *     (URL + viewport, NO node tree) — no DOM leaves the browser.
+   * Adds nothing when a session-replay collector/recorder is already active for
+   * the session (that path already captures the error).
    */
   screenshotOnError?: boolean;
   /**
@@ -161,15 +182,19 @@ export function init(options: InitOptions = {}): Faro {
 
   // Replay/snapshot error trigger: the composed beforeSend sees every
   // exception item regardless of capture path (uncaught, unhandledrejection,
-  // captureException, console capture) — one choke point, set after the
-  // lazily imported replay machinery is ready.
-  let onErrorItem: ((message: string) => void) | undefined;
+  // captureException, console capture) — one choke point. Multiple capture
+  // paths (events timeline, DOM recording, screenshot) may register a handler;
+  // each is invoked once per captured error.
+  const errorHandlers: Array<(message: string) => void> = [];
   const composed = browserConfig.beforeSend!;
   browserConfig.beforeSend = (item) => {
     const result = composed(item);
-    if (result && onErrorItem && (item as { type?: string }).type === 'exception') {
+    if (result && errorHandlers.length > 0 && (item as { type?: string }).type === 'exception') {
       const payload = (item as { payload?: { value?: unknown } }).payload;
-      onErrorItem(String(payload?.value ?? ''));
+      const message = String(payload?.value ?? '');
+      for (const handler of errorHandlers) {
+        handler(message);
+      }
     }
     return result;
   };
@@ -193,38 +218,78 @@ export function init(options: InitOptions = {}): Faro {
       .catch(() => {});
   }
 
-  const replay = options.sessionReplay;
-  const wantRecording = replay?.enabled === true;
-  const wantSnapshot = options.screenshotOnError === true && !wantRecording;
-  if (wantRecording || wantSnapshot) {
+  // Session-replay tier switch. `normalizeSessionReplay` applies the safe
+  // default tier (`events`), validates the enum, and warns the pilots affected
+  // by the masked-DOM → events default change.
+  const replay = normalizeSessionReplay(options.sessionReplay);
+  const wantScreenshot = options.screenshotOnError === true;
+  if (replay.enabled || wantScreenshot) {
     const push = (name: string, attributes: Record<string, string>): void => {
       faro.api.pushEvent(name, attributes);
     };
-    if (wantRecording) {
-      void import('./replay/recording.js')
-        .then(({ startRecording }) =>
-          startRecording({
-            mode: replay?.mode ?? 'on-error',
-            sampleRate: replay?.sampleRate,
-            block: replay?.block,
-            push,
-            sessionId: faro.api.getSession?.()?.id,
+    const sessionId = faro.api.getSession?.()?.id;
+
+    if (replay.enabled) {
+      if (replay.tier === 'dom') {
+        // Full masked DOM recording (rrweb) — personvernombud-gated.
+        void import('./replay/recording.js')
+          .then(({ startRecording }) =>
+            startRecording({
+              mode: replay.mode,
+              sampleRate: replay.sampleRate,
+              block: replay.block,
+              push,
+              sessionId,
+            })
+          )
+          .then((handle) => {
+            if (handle) {
+              errorHandlers.push(() => handle.notifyError());
+            }
           })
-        )
-        .then((handle) => {
-          if (handle) {
-            onErrorItem = () => handle.notifyError();
-          }
-        })
-        .catch(() => {});
-    } else {
-      void import('./replay/snapshot.js')
-        .then(({ captureSnapshot }) => {
-          onErrorItem = (message) => {
-            void captureSnapshot(message, push, { block: replay?.block });
-          };
-        })
-        .catch(() => {});
+          .catch(() => {});
+      } else {
+        // events (default) and wireframe (Phase 3, currently falls back here):
+        // a DOM-free interaction timeline; no rrweb on this path.
+        void import('./replay/events.js')
+          .then(({ startEventsCollection }) =>
+            startEventsCollection({
+              mode: replay.mode,
+              sampleRate: replay.sampleRate,
+              push,
+              sessionId,
+            })
+          )
+          .then((handle) => {
+            if (handle) {
+              errorHandlers.push(() => handle.notifyError());
+            }
+          })
+          .catch(() => {});
+      }
+    }
+
+    // screenshotOnError, folded into the tier model. A DOM snapshot is only
+    // produced when the DOM tier is explicitly chosen AND no full recording is
+    // already streaming checkouts; otherwise it degrades to a text-free
+    // events-tier breadcrumb. When a collector/recorder is already active for
+    // the session it owns error capture, so screenshotOnError adds nothing.
+    if (wantScreenshot && !replay.enabled) {
+      if (replay.tier === 'dom') {
+        void import('./replay/snapshot.js')
+          .then(({ captureSnapshot }) => {
+            errorHandlers.push((message) => {
+              void captureSnapshot(message, push, { block: replay.block });
+            });
+          })
+          .catch(() => {});
+      } else {
+        void import('./replay/events.js')
+          .then(({ pushErrorBreadcrumb }) => {
+            errorHandlers.push(() => pushErrorBreadcrumb(push));
+          })
+          .catch(() => {});
+      }
     }
   }
 
