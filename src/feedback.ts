@@ -28,6 +28,14 @@ const MAX_MESSAGE_LENGTH = 4000;
 /** Deliberately permissive — this only guards against obvious non-emails, not RFC 5322 validation. */
 const EMAIL_SHAPE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+/**
+ * RFC 5321 caps an address at 254 chars; anything longer is not a real email.
+ * Bounding the length before EMAIL_SHAPE.test() keeps the (polynomially
+ * backtracking) shape check off unbounded untrusted input — see CodeQL
+ * js/polynomial-redos.
+ */
+const MAX_EMAIL_LENGTH = 254;
+
 export type FeedbackCategory = 'bug' | 'idea' | 'other';
 
 export interface CaptureFeedbackOptions {
@@ -69,7 +77,7 @@ export function captureFeedback(message: string, options: CaptureFeedbackOptions
 
   if (options.email !== undefined) {
     const email = options.email.trim();
-    if (EMAIL_SHAPE.test(email)) {
+    if (email.length <= MAX_EMAIL_LENGTH && EMAIL_SHAPE.test(email)) {
       attributes['email'] = email;
     }
   }
