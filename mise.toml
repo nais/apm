@@ -1,0 +1,34 @@
+[settings]
+# Only show task output on failure (keeps task runs quiet on success).
+task_output = "interleave"
+
+[tools]
+# Pin the toolchain. Node 22: @commitlint/cli >=21 needs >=22.12.0, and the
+# wider nais tooling standardizes on 22 (CI and release-please pin 22 too).
+node = "22"
+
+[env]
+NODE_NO_WARNINGS = "1"
+NPM_CONFIG_LOGLEVEL = "error"
+
+# --- Tasks ---
+
+[tasks.install]
+description = "Install dependencies (frozen lockfile)"
+run = "pnpm install --frozen-lockfile"
+
+[tasks.test]
+description = "Run unit tests (vitest)"
+run = "pnpm test"
+
+[tasks.build]
+description = "Build the package (tsc -> dist/)"
+run = "pnpm build"
+
+[tasks.typecheck]
+description = "Typecheck without emitting"
+run = "pnpm typecheck"
+
+[tasks.all]
+description = "Typecheck, test, and build"
+depends = ["typecheck", "test", "build"]

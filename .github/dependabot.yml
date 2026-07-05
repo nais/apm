@@ -1,0 +1,67 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: '/'
+    schedule:
+      interval: weekly
+      day: monday
+    cooldown:
+      default-days: 5
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: 'chore'
+      include: 'scope'
+    ignore:
+      # --- Load-bearing pins (see RELEASING.md "Dependency pins") ---
+      # The @grafana/rrweb fork is pinned to the EXACT version 2.0.0-grafana.2.
+      # The non-overridable replay masking floor is written against this fork's
+      # behavior; bumping it can silently change masking => a PII regression in
+      # shared Loki. Ignore ALL update types for both fork packages.
+      - dependency-name: '@grafana/rrweb'
+      - dependency-name: '@grafana/rrweb-snapshot'
+      # The @grafana/faro-* family must move together and stay within the current
+      # major: a faro-web-sdk major could transitively move the rrweb fork. Defer
+      # the next faro MAJOR until replay masking is re-validated (see RELEASING.md).
+      # Minor/patch within the current major is fine.
+      - dependency-name: '@grafana/faro-web-sdk'
+        versions: ['>=3.0.0']
+      - dependency-name: '@grafana/faro-web-tracing'
+        versions: ['>=3.0.0']
+      - dependency-name: '@grafana/faro-react'
+        versions: ['>=3.0.0']
+      # React is a peer dependency (range >=17) with dev/test deps on 19. Defer the
+      # next major until we validate against it, mirroring the plugin's caution.
+      - dependency-name: 'react'
+        versions: ['>=20.0.0']
+      - dependency-name: 'react-dom'
+        versions: ['>=20.0.0']
+      - dependency-name: '@types/react'
+        versions: ['>=20.0.0']
+      - dependency-name: '@types/react-dom'
+        versions: ['>=20.0.0']
+      - dependency-name: 'react-router-dom'
+        versions: ['>=8.0.0']
+    groups:
+      # Keep the faro family on a single version by grouping them into one PR.
+      # Listed before npm-all so faro packages land here rather than the catch-all.
+      faro:
+        patterns:
+          - '@grafana/faro-web-sdk'
+          - '@grafana/faro-web-tracing'
+          - '@grafana/faro-react'
+      npm-all:
+        patterns:
+          - '*'
+
+  - package-ecosystem: github-actions
+    directory: '/'
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: 'chore(ci)'
+    groups:
+      actions-all:
+        patterns:
+          - '*'
