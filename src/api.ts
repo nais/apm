@@ -197,6 +197,60 @@ export function setUser(user: User | null): void {
   faro.api.setUser(safe);
 }
 
+export interface PushMeasurementOptions {
+  /**
+   * Extra string labels attached to the measurement. Low-cardinality labels
+   * only — these land as fields on the shared Loki instance and go through the
+   * PII scrubber (fnr/email/token + NAV-ident redaction). Do NOT put identities
+   * here; the numeric `values` are the metric and are never scrubbed.
+   */
+  context?: Record<string, string>;
+}
+
+/**
+ * Record a custom numeric measurement (a metric). Safe, documented entry point
+ * over `faro.api.pushMeasurement` so teams don't drop to raw Faro. It rides the
+ * same guarded transport, so the mandatory PII scrubber runs on the way out —
+ * including NAV-ident redaction on `context`. No-op before `init()`.
+ *
+ * @example pushMeasurement('checkout_latency', { ms: 812 })
+ */
+export function pushMeasurement(
+  type: string,
+  values: Record<string, number>,
+  options: PushMeasurementOptions = {}
+): void {
+  const faro = getFaroInstance();
+  if (!faro) {
+    return;
+  }
+  faro.api.pushMeasurement({
+    type,
+    values,
+    ...(options.context ? { context: options.context } : {}),
+  });
+}
+
+/**
+ * Record a custom event with string attributes. Safe, documented entry point
+ * over `faro.api.pushEvent` so teams don't drop to raw Faro. It rides the same
+ * guarded transport, so the mandatory PII scrubber runs on the way out —
+ * including NAV-ident redaction on `attributes`. No-op before `init()`.
+ *
+ * @example pushEvent('feature_flag_evaluated', { flag: 'new-checkout', value: 'on' })
+ */
+export function pushEvent(
+  name: string,
+  attributes?: Record<string, string>,
+  domain?: string
+): void {
+  const faro = getFaroInstance();
+  if (!faro) {
+    return;
+  }
+  faro.api.pushEvent(name, attributes, domain);
+}
+
 /** Clear the active user. Replacement for `Sentry.setUser(null)`. */
 export function clearUser(): void {
   const faro = getFaroInstance();

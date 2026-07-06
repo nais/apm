@@ -7,6 +7,8 @@ import {
   captureException,
   captureMessage,
   clearUser,
+  pushEvent,
+  pushMeasurement,
   setContext,
   setTag,
   setUser,
@@ -17,6 +19,8 @@ function createFakeFaro() {
   const api = {
     pushError: vi.fn(),
     pushLog: vi.fn(),
+    pushMeasurement: vi.fn(),
+    pushEvent: vi.fn(),
     setUser: vi.fn(),
     resetUser: vi.fn(),
   };
@@ -165,6 +169,39 @@ describe('Sentry-compat API', () => {
       setContext('feature', null);
       captureException(new Error('x'));
       expect(api.pushError).toHaveBeenCalledWith(expect.any(Error), undefined);
+    });
+  });
+
+  describe('custom telemetry wrappers', () => {
+    it('pushMeasurement calls through to faro.api.pushMeasurement', () => {
+      pushMeasurement('checkout_latency', { ms: 812 });
+      expect(api.pushMeasurement).toHaveBeenCalledWith({ type: 'checkout_latency', values: { ms: 812 } });
+    });
+
+    it('pushMeasurement forwards context labels', () => {
+      pushMeasurement('checkout_latency', { ms: 812 }, { context: { page: 'oversikt' } });
+      expect(api.pushMeasurement).toHaveBeenCalledWith({
+        type: 'checkout_latency',
+        values: { ms: 812 },
+        context: { page: 'oversikt' },
+      });
+    });
+
+    it('pushEvent calls through to faro.api.pushEvent', () => {
+      pushEvent('feature_flag_evaluated', { flag: 'new-checkout', value: 'on' });
+      expect(api.pushEvent).toHaveBeenCalledWith(
+        'feature_flag_evaluated',
+        { flag: 'new-checkout', value: 'on' },
+        undefined
+      );
+    });
+
+    it('pushMeasurement/pushEvent are no-ops before init()', () => {
+      _resetStateForTesting();
+      pushMeasurement('m', { v: 1 });
+      pushEvent('e');
+      expect(api.pushMeasurement).not.toHaveBeenCalled();
+      expect(api.pushEvent).not.toHaveBeenCalled();
     });
   });
 });

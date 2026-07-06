@@ -1,6 +1,13 @@
 import { describe, expect, it, vi } from 'vitest';
 import { TransportItemType } from '@grafana/faro-web-sdk';
-import type { ExceptionEvent, LogEvent, Meta, TransportItem } from '@grafana/faro-web-sdk';
+import type {
+  EventEvent,
+  ExceptionEvent,
+  LogEvent,
+  MeasurementEvent,
+  Meta,
+  TransportItem,
+} from '@grafana/faro-web-sdk';
 
 import {
   composeBeforeSend,
@@ -201,6 +208,80 @@ describe('scrubTransportItem', () => {
     const item = exceptionItem({ value: 'ola@nav.no' });
     scrubTransportItem(item);
     expect(item.payload.value).toBe('ola@nav.no');
+  });
+});
+
+function measurementItem(payload: Partial<MeasurementEvent>): TransportItem<MeasurementEvent> {
+  return {
+    type: TransportItemType.MEASUREMENT,
+    payload: {
+      type: 'custom',
+      values: {},
+      timestamp: '2026-07-03T00:00:00Z',
+      ...payload,
+    },
+    meta: {} as Meta,
+  };
+}
+
+function eventItem(payload: Partial<EventEvent>): TransportItem<EventEvent> {
+  return {
+    type: TransportItemType.EVENT,
+    payload: {
+      name: 'custom.event',
+      timestamp: '2026-07-03T00:00:00Z',
+      ...payload,
+    },
+    meta: {} as Meta,
+  };
+}
+
+describe('scrubTransportItem — NAV ident redaction (measurements & events)', () => {
+  it('redacts a bare NAV ident in measurement context', () => {
+    const item = measurementItem({
+      values: { duration_ms: 123 },
+      context: { user_id: 'Z994455', page: 'oversikt' },
+    });
+    const scrubbed = scrubTransportItem(item) as TransportItem<MeasurementEvent>;
+    expect(scrubbed.payload.context?.['user_id']).toBe('[ident]');
+    // A legitimate low-cardinality label is left alone.
+    expect(scrubbed.payload.context?.['page']).toBe('oversikt');
+  });
+
+  it('never touches numeric measurement values (they are the metric)', () => {
+    const item = measurementItem({
+      values: { duration_ms: 994455, count: 42 },
+      context: { user_id: 'Z994455' },
+    });
+    const scrubbed = scrubTransportItem(item) as TransportItem<MeasurementEvent>;
+    expect(scrubbed.payload.values).toEqual({ duration_ms: 994455, count: 42 });
+    expect(scrubbed.payload.context?.['user_id']).toBe('[ident]');
+  });
+
+  it('still applies the fnr/email/token patterns to measurement context', () => {
+    const item = measurementItem({
+      context: { owner: 'ola@nav.no', ref: 'fnr 01017012345' },
+    });
+    const scrubbed = scrubTransportItem(item) as TransportItem<MeasurementEvent>;
+    expect(scrubbed.payload.context?.['owner']).toBe('[email]');
+    expect(scrubbed.payload.context?.['ref']).toBe('fnr [fnr]');
+  });
+
+  it('redacts a bare NAV ident in event attributes', () => {
+    const item = eventItem({
+      attributes: { user_id: 'Z994455', enhet: 'Nav Grünerløkka', action: 'save' },
+    });
+    const scrubbed = scrubTransportItem(item) as TransportItem<EventEvent>;
+    expect(scrubbed.payload.attributes?.['user_id']).toBe('[ident]');
+    // A name label is not pattern-shaped — documented residual, left as-is.
+    expect(scrubbed.payload.attributes?.['enhet']).toBe('Nav Grünerløkka');
+    expect(scrubbed.payload.attributes?.['action']).toBe('save');
+  });
+
+  it('does not mutate the original measurement item', () => {
+    const item = measurementItem({ context: { user_id: 'Z994455' } });
+    scrubTransportItem(item);
+    expect(item.payload.context?.['user_id']).toBe('Z994455');
   });
 });
 

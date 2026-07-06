@@ -169,6 +169,22 @@ setContext('order', { id: '123', total: 499 });
 setContext('order', null); // remove it
 ```
 
+### `pushMeasurement(type, values, options?)` / `pushEvent(name, attributes?, domain?)`
+
+Safe, documented entry points for **custom telemetry** — a thin wrapper over Faro's `pushMeasurement`/`pushEvent` so you don't have to reach for the raw `faro` instance. Both ride the same guarded transport as everything else, so the mandatory PII scrubbing (below) — including **NAV-ident redaction** on the string labels — runs on the way out.
+
+```ts
+import { pushMeasurement, pushEvent } from '@nais/apm';
+
+// A numeric metric. `values` are numbers (the metric itself, never scrubbed).
+pushMeasurement('checkout_latency', { ms: 812 }, { context: { page: 'oversikt' } });
+
+// A structured event with string attributes.
+pushEvent('feature_flag_evaluated', { flag: 'new-checkout', value: 'on' });
+```
+
+Do **not** put identities (NAV idents, fødselsnummer, emails, names) in the `context`/`attributes` labels — those are string fields that land on the **shared** Loki instance. Ident-shaped values (`Z994455`), fnr, email, and token params are scrubbed automatically, but names are not pattern-shaped and will not be caught.
+
 ### `captureFeedback(message, options?)`
 
 Free-text user feedback capture — no direct Sentry equivalent, this is `@nais/apm`'s own addition. Feedback is joined to the current session automatically, and optionally to a specific issue via `fingerprint`.
@@ -209,11 +225,12 @@ console.log(scrubString('contact me at user@example.com'));
 
 ## Privacy: PII scrubbing (mandatory)
 
-Every outgoing signal (exception values, stack traces, log lines, context values, and the page URL) passes through a `beforeSend` scrubbing pipeline before it leaves the browser:
+Every outgoing signal (exception values, stack traces, log lines, context values, custom measurement/event labels, and the page URL) passes through a `beforeSend` scrubbing pipeline before it leaves the browser:
 
 - **Norwegian fødselsnummer** (11 digits, sanity-checked against a plausible date prefix, including D-numbers, H-numbers, and synthetic test numbers) → `[fnr]`
 - **Email addresses** → `[email]`
 - **Token-bearing URL parameters** (`token`, `access_token`, `id_token`, `refresh_token`, `code`, `state`) → `[redacted]`
+- **Raw NAV idents** (a letter + six digits, e.g. `Z994455`) in custom measurement `context` and event `attributes` → `[ident]`. Whole-value match only, so ordinary low-cardinality labels are left alone; numeric measurement `values` are the metric and are never touched. Names (e.g. an `enhetNavn`) are not pattern-shaped and are **not** caught — don't put them in labels.
 
 Your own `init({ beforeSend })` hook (if any) runs **first** and may drop items by returning `null`; the scrubber always runs **last**, so it also sees anything your hook added.
 
