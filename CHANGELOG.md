@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.0](https://github.com/nais/apm/compare/apm-v0.3.0...apm-v0.4.0) (2026-07-06)
+
+
+### Features
+
+* **replay:** harden DOM/wireframe masking (Phase 2 of [#82](https://github.com/nais/apm/issues/82)) ([#13](https://github.com/nais/apm/issues/13)) ([9db19ab](https://github.com/nais/apm/commit/9db19abe51f0740a0731efeb1163f5d1b65f2f63))
+
 ## [0.3.0](https://github.com/nais/apm/compare/apm-v0.2.0...apm-v0.3.0) (2026-07-05)
 
 
