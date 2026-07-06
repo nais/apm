@@ -45,7 +45,7 @@ jobs:
     steps:
       - name: Run release-please
         id: release
-        uses: googleapis/release-please-action@v4
+        uses: googleapis/release-please-action@v5
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           config-file: release-please-config.json
@@ -78,15 +78,15 @@ jobs:
       RELEASE_TAG: ${{ needs.release-please.outputs.tag_name || inputs.tag }}
     steps:
       - name: Checkout release tag
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: ${{ env.RELEASE_TAG }}
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           # Pinned >= 22.12.0: @commitlint/cli (a devDependency installed below)
           # declares engines.node ">=22.12.0"; node 20 is also EOL on runners.
