@@ -15,7 +15,8 @@
  * Best-effort by design: regex scrubbing is not a GDPR guarantee.
  */
 
-import type { BeforeSendHook, TransportItem } from '@grafana/faro-web-sdk';
+import { TransportItemType } from '@grafana/faro-web-sdk';
+import type { BeforeSendHook, EventEvent, MeasurementEvent, TransportItem } from '@grafana/faro-web-sdk';
 
 const FNR_CANDIDATE = /\b(\d{6})\s?(\d{5})\b/g;
 const EMAIL = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
@@ -149,12 +150,49 @@ export function scrubReplayEvents<T>(events: T): T {
   return scrubValue(events, 0, new WeakSet(), REPLAY_MAX_DEPTH) as T;
 }
 
+/**
+ * Redact bare NAV idents (a single letter + six digits, e.g. `Z994455`) in a
+ * string→string label map — measurement `context` or event `attributes`.
+ *
+ * These maps are free-form string labels teams attach to custom telemetry, and
+ * they routinely carry a raw NAV ident (a direct employee identifier that must
+ * never reach shared Loki). The generic {@link scrubValue} pass has already run
+ * over these values, so fnr/email/token are handled; the only PII class left is
+ * a whole-value ident, which those patterns pass. Detection reuses
+ * {@link looksLikePii} — the same check the `setUser` path uses — and, on an
+ * already-scrubbed value, it fires only on {@link RAW_IDENT}. Whole-value match
+ * only, so ordinary low-cardinality labels (`step-2`, `checkout`) are untouched.
+ */
+function redactIdentLabels(labels: Record<string, string>): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [key, value] of Object.entries(labels)) {
+    out[key] = typeof value === 'string' && looksLikePii(value) ? '[ident]' : value;
+  }
+  return out;
+}
+
 /** Deep-scrub every string in a transport item (payload + page URL), without mutating the input. */
 export function scrubTransportItem(item: TransportItem): TransportItem {
-  const scrubbed: TransportItem = {
-    ...item,
-    payload: scrubValue(item.payload, 0, new WeakSet()) as TransportItem['payload'],
-  };
+  const payload = scrubValue(item.payload, 0, new WeakSet()) as TransportItem['payload'];
+
+  // Ident layer: measurement `context` and event `attributes` are free-form
+  // string label maps that carry NAV idents (Z-numbers) the fnr/email/token
+  // patterns above don't catch. Numeric measurement `values` are the metric
+  // itself and are deliberately left untouched (scrubValue never rewrites
+  // numbers). `payload` is a fresh deep copy, so mutating it here is safe.
+  if (item.type === TransportItemType.MEASUREMENT) {
+    const measurement = payload as MeasurementEvent;
+    if (measurement.context) {
+      measurement.context = redactIdentLabels(measurement.context);
+    }
+  } else if (item.type === TransportItemType.EVENT) {
+    const event = payload as EventEvent;
+    if (event.attributes) {
+      event.attributes = redactIdentLabels(event.attributes);
+    }
+  }
+
+  const scrubbed: TransportItem = { ...item, payload };
   const pageUrl = item.meta?.page?.url;
   if (typeof pageUrl === 'string') {
     scrubbed.meta = {

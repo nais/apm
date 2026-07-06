@@ -22,8 +22,17 @@ import { getStoredFaro, setFaroInstance } from './internal.js';
 import { normalizeSessionReplay } from './replay/options.js';
 import { composeBeforeSend } from './scrub.js';
 
-export { captureException, captureMessage, setUser, clearUser, setTag, setContext } from './api.js';
-export type { CaptureExceptionOptions, SeverityLevel, User } from './api.js';
+export {
+  captureException,
+  captureMessage,
+  setUser,
+  clearUser,
+  setTag,
+  setContext,
+  pushMeasurement,
+  pushEvent,
+} from './api.js';
+export type { CaptureExceptionOptions, SeverityLevel, User, PushMeasurementOptions } from './api.js';
 export { captureFeedback, FEEDBACK_EVENT_NAME } from './feedback.js';
 export type { CaptureFeedbackOptions, FeedbackCategory } from './feedback.js';
 export { resolveConfig, versionFromImage } from './config.js';
