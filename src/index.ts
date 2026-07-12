@@ -15,10 +15,10 @@ import {
 } from '@grafana/faro-web-sdk';
 import type { BeforeSendHook, BrowserConfig, Faro, Patterns } from '@grafana/faro-web-sdk';
 
-import { resolveConfig } from './config.js';
-import type { ConfigOptions } from './config.js';
+import { fromNaisConfig, resolveConfig } from './config.js';
+import type { ConfigOptions, NaisGeneratedConfig } from './config.js';
 import { NaisConsoleInstrumentation } from './console.js';
-import { getStoredFaro, setFaroInstance } from './internal.js';
+import { getStoredFaro, setFaroInstance, startPreInitBuffering } from './internal.js';
 import { normalizeSessionReplay } from './replay/options.js';
 import { composeBeforeSend } from './scrub.js';
 
@@ -35,8 +35,10 @@ export {
 export type { CaptureExceptionOptions, SeverityLevel, User, PushMeasurementOptions } from './api.js';
 export { captureFeedback, FEEDBACK_EVENT_NAME } from './feedback.js';
 export type { CaptureFeedbackOptions, FeedbackCategory } from './feedback.js';
-export { resolveConfig, versionFromImage } from './config.js';
-export type { ConfigOptions, ResolvedConfig } from './config.js';
+export { resolveConfig, versionFromImage, fromNaisConfig, isLocalHost, navTenant } from './config.js';
+export type { ConfigOptions, ResolvedConfig, NaisGeneratedConfig, TenantProfile } from './config.js';
+export { getNaisMetaTags, renderNaisMetaTags } from './metaTags.js';
+export type { NaisMetaTag } from './metaTags.js';
 export { NaisConsoleInstrumentation, CONSOLE_ERROR_PREFIX } from './console.js';
 export { scrubString } from './scrub.js';
 export { isInitialized } from './internal.js';
@@ -148,6 +150,68 @@ export interface InitOptions extends ConfigOptions {
  * machinery (`@grafana/faro-web-tracing`) is lazily loaded so it stays out of
  * the bundle when tracing is not enabled.
  */
+/**
+ * Initialize @nais/apm from a served nais generated-config file — the
+ * naiserator `spec.frontend.generatedConfig` payload mounted into the app's
+ * web root (nais/grafana-apm-app#134), or, later, the platform's well-known
+ * config URL. This is the zero-environment-config path for static SPAs: the
+ * fetched values fill any field not passed explicitly in `options`.
+ *
+ * Signals raised while the fetch is in flight (typically early errors) are
+ * buffered and flushed into Faro once initialization completes — they are not
+ * lost. If the fetch fails, initialization still proceeds with standard
+ * resolution (meta tags/env/fallbacks), which is loud about what is missing;
+ * this function never throws.
+ *
+ * @example
+ * // main.tsx — nais.json served from the web root via generatedConfig
+ * await initFromConfigUrl('/nais.json', { app: 'my-app', namespace: 'my-team' });
+ */
+export async function initFromConfigUrl(
+  url = '/nais.json',
+  options: InitOptions = {}
+): Promise<Faro> {
+  const existing = getStoredFaro();
+  if (existing) {
+    // eslint-disable-next-line no-console
+    console.warn('[@nais/apm] init() called more than once; returning the existing instance.');
+    return existing;
+  }
+
+  startPreInitBuffering();
+
+  let fetched: ConfigOptions = {};
+  try {
+    const response = await fetch(url);
+    if (response.ok) {
+      fetched = fromNaisConfig((await response.json()) as NaisGeneratedConfig);
+    } else {
+      // eslint-disable-next-line no-console
+      console.warn(
+        `[@nais/apm] Fetching nais config from '${url}' failed (HTTP ${response.status}); ` +
+          'continuing with standard config resolution.'
+      );
+    }
+  } catch {
+    // eslint-disable-next-line no-console
+    console.warn(
+      `[@nais/apm] Fetching nais config from '${url}' failed (network error); ` +
+        'continuing with standard config resolution.'
+    );
+  }
+
+  // Explicit options win over fetched values (resolution priority 1); the
+  // fetched config only fills fields the caller did not set.
+  const merged: InitOptions = { ...options };
+  for (const field of ['app', 'namespace', 'version', 'environment', 'telemetryUrl'] as const) {
+    if (merged[field] == null && fetched[field] != null) {
+      merged[field] = fetched[field];
+    }
+  }
+
+  return init(merged);
+}
+
 export function init(options: InitOptions = {}): Faro {
   const existing = getStoredFaro();
   if (existing) {

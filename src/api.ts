@@ -16,7 +16,7 @@
 import { LogLevel } from '@grafana/faro-web-sdk';
 import type { MetaUser } from '@grafana/faro-web-sdk';
 
-import { getFaroInstance, getGlobalContext } from './internal.js';
+import { getGlobalContext, runOrBuffer } from './internal.js';
 import { looksLikePii } from './scrub.js';
 
 export interface CaptureExceptionOptions {
@@ -77,10 +77,8 @@ function toError(value: unknown): Error {
  * `Sentry.captureException`. Note: Faro's `pushError` returns no event ID.
  */
 export function captureException(error: unknown, options: CaptureExceptionOptions = {}): void {
-  const faro = getFaroInstance();
-  if (!faro) {
-    return;
-  }
+  // Context and error are snapshotted at call time so buffered calls (an async
+  // init in flight) capture the state the caller saw, not the flush-time state.
   const context: Record<string, string> = {
     ...getGlobalContext(),
     ...stringifyContext(options.context),
@@ -88,19 +86,20 @@ export function captureException(error: unknown, options: CaptureExceptionOption
   if (options.fingerprint !== undefined) {
     context['fingerprint'] = options.fingerprint;
   }
-  faro.api.pushError(toError(error), Object.keys(context).length > 0 ? { context } : undefined);
+  const error_ = toError(error);
+  runOrBuffer((faro) => {
+    faro.api.pushError(error_, Object.keys(context).length > 0 ? { context } : undefined);
+  });
 }
 
 /** Capture a message as a log line. Replacement for `Sentry.captureMessage`. */
 export function captureMessage(message: string, level: SeverityLevel = 'info'): void {
-  const faro = getFaroInstance();
-  if (!faro) {
-    return;
-  }
-  const globalContext = getGlobalContext();
-  faro.api.pushLog([message], {
-    level: SEVERITY_TO_LOG_LEVEL[level] ?? LogLevel.INFO,
-    context: Object.keys(globalContext).length > 0 ? { ...globalContext } : undefined,
+  const globalContext = { ...getGlobalContext() };
+  runOrBuffer((faro) => {
+    faro.api.pushLog([message], {
+      level: SEVERITY_TO_LOG_LEVEL[level] ?? LogLevel.INFO,
+      context: Object.keys(globalContext).length > 0 ? globalContext : undefined,
+    });
   });
 }
 
@@ -143,12 +142,8 @@ export function _resetUserPiiWarning(): void {
  * @example setUser({ id: hashedSubject }) // hashedSubject = a salted hash, not an ident
  */
 export function setUser(user: User | null): void {
-  const faro = getFaroInstance();
-  if (!faro) {
-    return;
-  }
   if (user === null) {
-    faro.api.resetUser();
+    runOrBuffer((faro) => faro.api.resetUser());
     return;
   }
 
@@ -194,7 +189,7 @@ export function setUser(user: User | null): void {
     );
   }
 
-  faro.api.setUser(safe);
+  runOrBuffer((faro) => faro.api.setUser(safe));
 }
 
 export interface PushMeasurementOptions {
@@ -220,14 +215,12 @@ export function pushMeasurement(
   values: Record<string, number>,
   options: PushMeasurementOptions = {}
 ): void {
-  const faro = getFaroInstance();
-  if (!faro) {
-    return;
-  }
-  faro.api.pushMeasurement({
-    type,
-    values,
-    ...(options.context ? { context: options.context } : {}),
+  runOrBuffer((faro) => {
+    faro.api.pushMeasurement({
+      type,
+      values,
+      ...(options.context ? { context: options.context } : {}),
+    });
   });
 }
 
@@ -244,20 +237,12 @@ export function pushEvent(
   attributes?: Record<string, string>,
   domain?: string
 ): void {
-  const faro = getFaroInstance();
-  if (!faro) {
-    return;
-  }
-  faro.api.pushEvent(name, attributes, domain);
+  runOrBuffer((faro) => faro.api.pushEvent(name, attributes, domain));
 }
 
 /** Clear the active user. Replacement for `Sentry.setUser(null)`. */
 export function clearUser(): void {
-  const faro = getFaroInstance();
-  if (!faro) {
-    return;
-  }
-  faro.api.resetUser();
+  runOrBuffer((faro) => faro.api.resetUser());
 }
 
 /**

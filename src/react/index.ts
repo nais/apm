@@ -18,3 +18,6 @@ export { ApmRoutes, enableApmReactRouterV6, useApmRouteTracking } from './routin
 export type { ReactRouterV6Dependencies } from './routing.js';
 
 export { initNaisAPMClient } from './nextClient.js';
+
+export { NaisMetaTags } from './NaisMetaTags.js';
+export type { NaisMetaTagsProps } from './NaisMetaTags.js';
