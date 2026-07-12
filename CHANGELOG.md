@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.5.0](https://github.com/nais/apm/compare/apm-v0.4.0...apm-v0.5.0) (2026-07-12)
+
+
+### Features
+
+* auto-config — consume the platform channel, SSR helpers, loud misconfig failure ([#18](https://github.com/nais/apm/issues/18)) ([82b1a03](https://github.com/nais/apm/commit/82b1a038e9c40bc8acf19574566b81111b1ccd12))
+* **scrub:** redact NAV idents in custom telemetry + safe pushMeasurement/pushEvent ([#15](https://github.com/nais/apm/issues/15)) ([2e9cb50](https://github.com/nais/apm/commit/2e9cb50772b34bfcf939eee9515f5f3e99fe013d))
+
+
+### Documentation
+
+* ADR-0001 — frontend config contract, resolved by field knowability ([#17](https://github.com/nais/apm/issues/17)) ([d8e52ca](https://github.com/nais/apm/commit/d8e52ca6a63f36d2c36f34308c3b2e00bf8a73c2))
+
 ## [0.4.0](https://github.com/nais/apm/compare/apm-v0.3.0...apm-v0.4.0) (2026-07-06)
 
 
