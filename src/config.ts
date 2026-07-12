@@ -1,13 +1,21 @@
 /**
- * Config resolution for @nais/apm.
+ * Config resolution for @nais/apm (ADR-0001: docs/adr/0001-frontend-config-contract.md).
  *
  * Priority order (per field):
  *   1. Explicit `init()` options
- *   2. `<meta name="nais-app|nais-cluster|nais-version|nais-telemetry-url">` tags
- *   3. Build-time environment variables (`NAIS_APP_NAME`, `NAIS_CLUSTER_NAME`,
- *      version derived from `NAIS_APP_IMAGE`) — these only work when the bundler
- *      inlines `process.env.*` (webpack DefinePlugin, Vite `define`, Next.js `env`).
- *   4. Dev fallback: no collector URL resolved → console-echo mode (warn once).
+ *   2. `<meta name="nais-app|nais-team|nais-cluster|nais-version|nais-telemetry-url">` tags
+ *      (a server→browser transport rendered by the app's own server or the
+ *      `@nais/apm/react` helpers — the platform never injects them)
+ *   3. Environment variables — `NAIS_APP_NAME`, `NAIS_TEAM`/`NAIS_NAMESPACE`,
+ *      `NAIS_FRONTEND_TELEMETRY_COLLECTOR_URL` (pod runtime, SSR), and a version
+ *      derived from `GITHUB_SHA`/`NAIS_APP_IMAGE`. In browser bundles these only
+ *      work when the bundler inlines `process.env.*` — and note that
+ *      `NAIS_CLUSTER_NAME` can NEVER be inlined correctly (one image deploys to
+ *      many clusters); only `version` is safe to inline.
+ *   4. Collector fallback derived from the cluster name (nav tenant only).
+ *   5. No collector URL resolved → on a local host, console-echo dev mode
+ *      (warn once); on a non-local host this is a misconfiguration and a
+ *      loud, specific `console.error` is emitted instead.
  */
 
 export interface ConfigOptions {
@@ -27,6 +35,11 @@ export interface ConfigOptions {
   environment?: string;
   /** Faro collector URL (Alloy `faro.receiver`). */
   telemetryUrl?: string;
+  /**
+   * Print the per-field resolution table (which source won for each field) to
+   * the console. Use this to diagnose "why is nothing being sent".
+   */
+  debug?: boolean;
 }
 
 export interface ResolvedConfig {
@@ -38,6 +51,50 @@ export interface ResolvedConfig {
   telemetryUrl?: string;
   /** True when no collector URL could be resolved → console-echo mode. */
   devMode: boolean;
+}
+
+/**
+ * The shape of the nais platform's generated frontend config — the `nais.js`
+ * module (and upcoming `nais.json`) that naiserator mounts into the pod when
+ * `spec.frontend.generatedConfig` is set, with `environment`/`schemaVersion`
+ * arriving as the platform contract completes (nais/grafana-apm-app#134).
+ */
+export interface NaisGeneratedConfig {
+  /** Contract generation; absent on the original payload. */
+  schemaVersion?: number;
+  /** Faro collector URL for the cluster this pod runs in. */
+  telemetryCollectorURL?: string;
+  app?: {
+    name?: string;
+    /** The owning team; absent until nais/grafana-apm-app#134 phase 1 lands. */
+    namespace?: string;
+    version?: string;
+  };
+  /** Cluster/environment; absent until nais/grafana-apm-app#134 phase 1 lands. */
+  environment?: string;
+}
+
+/**
+ * Map the nais generated frontend config (naiserator `generatedConfig`) to
+ * `init()` options. SSR servers can `import(mountPath)` the mounted module and
+ * pass it through; browser apps that serve the file from their web root should
+ * prefer {@link initFromConfigUrl} (which fetches and applies it in one step).
+ *
+ * @example
+ * const naisConfig = (await import('/app/nais.js')).default;
+ * init({ ...fromNaisConfig(naisConfig), namespace: 'my-team' });
+ */
+export function fromNaisConfig(config: NaisGeneratedConfig | null | undefined): ConfigOptions {
+  if (config == null || typeof config !== 'object') {
+    return {};
+  }
+  const options: ConfigOptions = {};
+  if (config.app?.name) options.app = config.app.name;
+  if (config.app?.namespace) options.namespace = config.app.namespace;
+  if (config.app?.version) options.version = config.app.version;
+  if (config.environment) options.environment = config.environment;
+  if (config.telemetryCollectorURL) options.telemetryUrl = config.telemetryCollectorURL;
+  return options;
 }
 
 // Ambient declaration so we can reference `process.env.*` literally (required for
@@ -110,12 +167,52 @@ function telemetryUrlFromCluster(cluster: string | undefined): string | undefine
   return undefined;
 }
 
+/**
+ * True when the page is served from a genuinely local host — the only case
+ * where silently entering console-echo dev mode is the right behavior. On any
+ * other host a missing collector URL is a production misconfiguration and must
+ * be loud (ADR-0001 decision 6).
+ */
+export function isLocalHost(
+  hostname: string | undefined = typeof window !== 'undefined' && window.location
+    ? window.location.hostname
+    : undefined
+): boolean {
+  if (hostname === undefined) {
+    // Non-browser (SSR import, tests without jsdom): treat as local — the
+    // browser-side init is where the loud path matters.
+    return true;
+  }
+  return (
+    hostname === '' ||
+    hostname === 'localhost' ||
+    hostname === '127.0.0.1' ||
+    hostname === '[::1]' ||
+    hostname.endsWith('.localhost') ||
+    hostname.endsWith('.local')
+  );
+}
+
+/** A resolved field value plus the source that supplied it (for `debug`). */
+type Resolution = [value: string | undefined, source: string];
+
+function pick(...candidates: Resolution[]): Resolution {
+  for (const [value, source] of candidates) {
+    if (value != null) {
+      return [value, source];
+    }
+  }
+  return [undefined, 'unresolved'];
+}
+
 let warnedDevMode = false;
+let warnedMissingCollector = false;
 let warnedMissingNamespace = false;
 
 /** @internal test helper — resets the once-only dev-mode and namespace warnings. */
 export function _resetDevModeWarning(): void {
   warnedDevMode = false;
+  warnedMissingCollector = false;
   warnedMissingNamespace = false;
 }
 
@@ -124,6 +221,9 @@ export function resolveConfig(options: ConfigOptions = {}): ResolvedConfig {
   const envCluster = safeEnv(() => process.env.NAIS_CLUSTER_NAME);
   const envNamespace =
     safeEnv(() => process.env.NAIS_TEAM) ?? safeEnv(() => process.env.NAIS_NAMESPACE);
+  // The pod-runtime collector URL naiserator sets alongside generatedConfig.
+  // Runtime-only (SSR); in a CI-built browser bundle it does not exist.
+  const envTelemetryUrl = safeEnv(() => process.env.NAIS_FRONTEND_TELEMETRY_COLLECTOR_URL);
   // The commit SHA is the release identity that deploy annotations carry
   // (nais/grafana-apm-app#64: the deploy-annotation action defaults to
   // github.sha), so preferring GITHUB_SHA makes app.version join deploy
@@ -132,24 +232,78 @@ export function resolveConfig(options: ConfigOptions = {}): ResolvedConfig {
   const envSha = safeEnv(() => process.env.GITHUB_SHA);
   const envVersion = envSha ?? versionFromImage(safeEnv(() => process.env.NAIS_APP_IMAGE));
 
-  const app = options.app ?? readMeta('nais-app') ?? envApp;
+  const [app, appSource] = pick(
+    [options.app, 'init option'],
+    [readMeta('nais-app'), 'meta nais-app'],
+    [envApp, 'env NAIS_APP_NAME']
+  );
   // Accept either `nais-team` (preferred, matches the product term) or the
   // literal `nais-namespace` meta/env for teams that mirror the k8s name.
-  const resolvedNamespace =
-    options.namespace ?? readMeta('nais-team') ?? readMeta('nais-namespace') ?? envNamespace;
-  const environment = options.environment ?? readMeta('nais-cluster') ?? envCluster;
-  const version = options.version ?? readMeta('nais-version') ?? envVersion;
-  const telemetryUrl =
-    options.telemetryUrl ?? readMeta('nais-telemetry-url') ?? telemetryUrlFromCluster(environment);
+  const [resolvedNamespace, namespaceSource] = pick(
+    [options.namespace, 'init option'],
+    [readMeta('nais-team'), 'meta nais-team'],
+    [readMeta('nais-namespace'), 'meta nais-namespace'],
+    [envNamespace, 'env NAIS_TEAM/NAIS_NAMESPACE']
+  );
+  const [environment, environmentSource] = pick(
+    [options.environment, 'init option'],
+    [readMeta('nais-cluster'), 'meta nais-cluster'],
+    [envCluster, 'env NAIS_CLUSTER_NAME']
+  );
+  const [version, versionSource] = pick(
+    [options.version, 'init option'],
+    [readMeta('nais-version'), 'meta nais-version'],
+    [envVersion, envSha ? 'env GITHUB_SHA' : 'env NAIS_APP_IMAGE tag']
+  );
+  const [telemetryUrl, telemetryUrlSource] = pick(
+    [options.telemetryUrl, 'init option'],
+    [readMeta('nais-telemetry-url'), 'meta nais-telemetry-url'],
+    [envTelemetryUrl, 'env NAIS_FRONTEND_TELEMETRY_COLLECTOR_URL'],
+    [telemetryUrlFromCluster(environment), `derived from cluster '${environment ?? ''}' (nav tenant fallback)`]
+  );
 
   const devMode = telemetryUrl == null;
-  if (devMode && !warnedDevMode) {
-    warnedDevMode = true;
+  const local = isLocalHost();
+
+  if (options.debug) {
     // eslint-disable-next-line no-console
-    console.warn(
-      '[@nais/apm] No telemetry collector URL resolved (no init option, nais meta tag, or NAIS_* env). ' +
-        'Running in dev mode: telemetry is echoed to the console and nothing is sent.'
+    console.info(
+      '[@nais/apm] config resolution:\n' +
+        [
+          ['app', app, appSource],
+          ['namespace', resolvedNamespace, namespaceSource],
+          ['version', version, versionSource],
+          ['environment', environment, environmentSource],
+          ['telemetryUrl', telemetryUrl, telemetryUrlSource],
+        ]
+          .map(([field, value, source]) => `  ${field} = ${value ?? '(unresolved)'} ← ${source}`)
+          .join('\n') +
+        `\n  mode = ${devMode ? (local ? 'dev (console echo)' : 'MISCONFIGURED (nothing sent)') : 'sending'}`
     );
+  }
+
+  if (devMode) {
+    if (local && !warnedDevMode) {
+      warnedDevMode = true;
+      // eslint-disable-next-line no-console
+      console.warn(
+        '[@nais/apm] No telemetry collector URL resolved (no init option, nais meta tag, or NAIS_* env). ' +
+          'Running in dev mode: telemetry is echoed to the console and nothing is sent.'
+      );
+    } else if (!local && !warnedMissingCollector) {
+      warnedMissingCollector = true;
+      // This page is served from a real (non-local) host with no collector —
+      // a misconfiguration, not local development. Be loud and specific
+      // (ADR-0001 decision 6): name what is missing, what will not flow, and
+      // how to fix it. Never throw — that would take down the host app.
+      // eslint-disable-next-line no-console
+      console.error(
+        '[@nais/apm] No telemetry collector URL resolved on a non-local host — telemetry will NOT be sent. ' +
+          'Fix one of: pass init({ telemetryUrl }), serve a <meta name="nais-telemetry-url"> tag, ' +
+          'or mount the nais generatedConfig into your web root and use initFromConfigUrl(). ' +
+          'Diagnose with init({ debug: true }). https://github.com/nais/apm#configuration-resolution'
+      );
+    }
   }
 
   // Team (namespace) is required for the plugin to attribute telemetry. We do
@@ -158,10 +312,11 @@ export function resolveConfig(options: ConfigOptions = {}): ResolvedConfig {
   if (resolvedNamespace == null && !warnedMissingNamespace) {
     warnedMissingNamespace = true;
     const message =
-      '[@nais/apm] namespace (team) is required — set it via init({ namespace }), ' +
-      'a <meta name="nais-team"> tag, or the NAIS_TEAM env';
+      '[@nais/apm] namespace (team) is required — telemetry cannot be attributed to your team and ' +
+      'will be grouped under "unknown-team". Fix one of: pass init({ namespace }), serve a ' +
+      '<meta name="nais-team"> tag, or set the NAIS_TEAM env.';
     // eslint-disable-next-line no-console
-    (devMode ? console.warn : console.error)(message);
+    (devMode && local ? console.warn : console.error)(message);
   }
 
   return {

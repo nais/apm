@@ -13,7 +13,7 @@ import {
   setTag,
   setUser,
 } from './api.js';
-import { _resetStateForTesting, setFaroInstance } from './internal.js';
+import { _resetStateForTesting, setFaroInstance, startPreInitBuffering } from './internal.js';
 
 function createFakeFaro() {
   const api = {
@@ -202,6 +202,63 @@ describe('Sentry-compat API', () => {
       pushEvent('e');
       expect(api.pushMeasurement).not.toHaveBeenCalled();
       expect(api.pushEvent).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('pre-init buffering (initFromConfigUrl in flight)', () => {
+    beforeEach(() => {
+      _resetStateForTesting();
+    });
+
+    it('buffers capture calls and flushes them on init, in order', () => {
+      const fake = createFakeFaro();
+      startPreInitBuffering();
+
+      const err = new Error('early');
+      captureException(err);
+      captureMessage('early message');
+      pushEvent('early_event');
+      expect(fake.api.pushError).not.toHaveBeenCalled();
+
+      setFaroInstance(fake.faro);
+
+      expect(fake.api.pushError).toHaveBeenCalledWith(err, undefined);
+      expect(fake.api.pushLog).toHaveBeenCalledWith(['early message'], {
+        level: LogLevel.INFO,
+        context: undefined,
+      });
+      expect(fake.api.pushEvent).toHaveBeenCalledWith('early_event', undefined, undefined);
+      expect(fake.api.pushError.mock.invocationCallOrder[0]).toBeLessThan(
+        fake.api.pushLog.mock.invocationCallOrder[0]!
+      );
+    });
+
+    it('snapshots global context at call time, not flush time', () => {
+      const fake = createFakeFaro();
+      startPreInitBuffering();
+
+      setTag('phase', 'before');
+      captureException(new Error('x'));
+      setTag('phase', 'after'); // must not leak into the already-buffered call
+
+      setFaroInstance(fake.faro);
+      expect(fake.api.pushError.mock.calls[0]?.[1]).toEqual({ context: { phase: 'before' } });
+    });
+
+    it('buffered calls do not fire the not-initialized warning', () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      startPreInitBuffering();
+      captureException(new Error('x'));
+      expect(warn).not.toHaveBeenCalled();
+    });
+
+    it('without buffering, pre-init calls stay warn-once no-ops', () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const fake = createFakeFaro();
+      captureException(new Error('dropped'));
+      setFaroInstance(fake.faro);
+      expect(fake.api.pushError).not.toHaveBeenCalled(); // dropped, not buffered
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('before init()'));
     });
   });
 });
