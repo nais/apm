@@ -36,11 +36,16 @@ GHPR requires an authenticated request to resolve _any_ package under a scope �
 ## Quickstart
 
 ```ts
-// main.tsx — the whole zero-config story
+// main.tsx — the canonical call: two code-time constants, everything else resolved
 import { init } from '@nais/apm';
 
-init(); // app name, version, environment and collector URL resolved from nais
+init({ app: 'my-app', namespace: 'my-team' });
 ```
+
+`app` and `namespace` are constants — identical in every environment — so passing
+them in code is correct, not a compromise. What actually varies per deploy
+(`environment`, the collector URL) is resolved at runtime; how depends on how your
+app is served — see [Setup per serving architecture](#setup-per-serving-architecture).
 
 ```ts
 // Sentry-style usage anywhere in your app
@@ -102,12 +107,89 @@ Each field (`app`, `namespace`, `version`, `environment`, `telemetryUrl`) resolv
    <meta name="nais-version" content="2026.07.03-abc1234" />
    <meta name="nais-telemetry-url" content="https://telemetry.<tenant>.example/collect" />
    ```
-   In practice this tag is injected by the nais platform, not written by hand.
-3. **Build-time environment variables** — `NAIS_APP_NAME`, `NAIS_TEAM` (or `NAIS_NAMESPACE`), `NAIS_CLUSTER_NAME`, and a version derived from `NAIS_APP_IMAGE`'s tag (or `GITHUB_SHA` if set). These only work when your bundler inlines `process.env.*` (webpack `DefinePlugin`, Vite `define`, Next.js `env`).
-4. **Collector fallback** — with no explicit/meta collector URL, a well-known collector is derived from the cluster name as a last resort. This fallback currently assumes the nav tenant; other tenants should rely on the meta tag/env, which the platform sets automatically.
-5. **Dev mode** — if no collector URL resolves at all (typically localhost), nothing is sent; see [Local development](#local-development).
+   The tags are rendered by **your app's own server** — the platform does not inject
+   them into HTML. Don't write them by hand: use `<NaisMetaTags />` /
+   `getNaisMetaTags()` (see below), which read the pod's runtime env for you.
+3. **Environment variables** — `NAIS_APP_NAME`, `NAIS_TEAM` (or `NAIS_NAMESPACE`), `NAIS_FRONTEND_TELEMETRY_COLLECTOR_URL`, and a version derived from `GITHUB_SHA` or `NAIS_APP_IMAGE`'s tag. These are **pod-runtime** values (SSR); in a browser bundle they only exist if your bundler inlines `process.env.*` at build time — which is only ever correct for `version` (via `GITHUB_SHA`, which CI has). **Do not inline `NAIS_CLUSTER_NAME`**: the cluster is unknowable at build time — one image deploys to many clusters — so a baked-in value is wrong in at least one of them.
+4. **Collector fallback** — with no explicit/meta/env collector URL, a well-known collector is derived from the cluster name as a last resort (nav tenant only).
+5. **Dev mode / loud failure** — if no collector URL resolves at all: on a genuinely local host (`localhost`, `127.0.0.1`, `*.local`) nothing is sent and everything echoes to the console (see [Local development](#local-development)); on **any other host this is a misconfiguration** and the SDK emits a specific `console.error` naming what's missing and how to fix it. It never throws.
 
-The `namespace` (owning nais team) is special: the plugin groups and attributes all telemetry by team, so browser telemetry without it can't be reliably attributed. It resolves via the same precedence (`init({ namespace })` → `nais-team`/`nais-namespace` meta → `NAIS_TEAM`/`NAIS_NAMESPACE` env) and is wired to Faro's `app.namespace`, which the collector emits as the `app_namespace` log field. If it can't be resolved the SDK does **not** throw (that would take down your app) — it loud-warns (`console.error` in prod, `console.warn` in dev) and falls back to `unknown-team`.
+Diagnose any resolution question with `init({ debug: true })` — it prints a per-field table of which source won.
+
+The `namespace` (owning nais team) is special: the plugin groups and attributes all telemetry by team, so browser telemetry without it can't be reliably attributed. It resolves via the same precedence (`init({ namespace })` → `nais-team`/`nais-namespace` meta → `NAIS_TEAM`/`NAIS_NAMESPACE` env) and is wired to Faro's `app.namespace`, which the collector emits as the `app_namespace` log field. If it can't be resolved the SDK does **not** throw (that would take down your app) — it loud-warns (`console.error` on real hosts, `console.warn` in local dev) and falls back to `unknown-team`.
+
+#### Setup per serving architecture
+
+The nais platform provides frontend config through `spec.frontend.generatedConfig`
+([nais docs](https://docs.nais.io/observability/frontend/)): naiserator mounts a
+`nais.js` module (collector URL, app name/namespace/version, environment) into the
+pod and sets `NAIS_FRONTEND_TELEMETRY_COLLECTOR_URL`. Pick the consumption path that
+matches how your app serves HTML:
+
+**SSR (Next.js & friends)** — render the meta tags server-side from the pod env; the
+browser-side `init()` picks them up:
+
+```tsx
+// app/layout.tsx (App Router) or _document.tsx <Head> (Pages Router)
+import { NaisMetaTags } from '@nais/apm/react';
+
+<head>
+  <NaisMetaTags />
+</head>
+
+// instrumentation-client.ts
+import { initNaisAPMClient } from '@nais/apm/react';
+initNaisAPMClient({ app: 'my-app', namespace: 'my-team' });
+```
+
+Non-React SSR: `renderNaisMetaTags()` returns the same tags as an HTML string, and
+`getNaisMetaTags()` as data. Servers that import the mounted module directly can pass
+it through instead: `init(fromNaisConfig((await import('/app/nais.js')).default))`.
+
+**Static SPA served from a pod (nginx/Node)** — point `generatedConfig.mountPath` into
+your web root so the file is served, then fetch-and-init:
+
+```yaml
+# nais.yaml
+spec:
+  frontend:
+    generatedConfig:
+      mountPath: /usr/share/nginx/html/nais.js
+```
+
+naiserator mounts `nais.json` (same payload, JSON) next to the `nais.js` module
+(nais/naiserator#687), so both are served from the web root.
+
+```ts
+import { initFromConfigUrl } from '@nais/apm';
+
+// Fetches the served config, then initializes. Errors thrown while the fetch
+// is in flight are buffered and sent after init — nothing is lost. If the
+// fetch fails, init proceeds with the standard resolution chain (loudly).
+void initFromConfigUrl('/nais.json', { app: 'my-app', namespace: 'my-team' });
+```
+
+Prefer the ESM module instead? Import it natively (keep it out of the bundle with
+your bundler's ignore comment) and pass it through:
+
+```ts
+import { init, fromNaisConfig } from '@nais/apm';
+
+const cfg = await import(/* @vite-ignore */ /* webpackIgnore: true */ '/nais.js');
+init({ ...fromNaisConfig(cfg.default), namespace: 'my-team' });
+```
+
+**CDN-served (no pod serves your HTML)** — there is no runtime injection point, so
+pass what you know in code and let `version` come from CI:
+
+```ts
+init({
+  app: 'my-app',
+  namespace: 'my-team',
+  // version: inlined from GITHUB_SHA by your bundler (safe — CI knows the SHA)
+  telemetryUrl: 'https://telemetry.nav.no/collect', // until a platform-served config URL exists
+});
+```
 
 ### `captureException(error, options?)`
 
@@ -285,7 +367,7 @@ The `block` option can only add more selectors to block — there is no option t
 
 ## Local development
 
-On `localhost` (or anywhere no collector URL resolves), `init()`:
+On a genuinely local host (`localhost`, `127.0.0.1`, `*.local`, `*.localhost`) with no collector URL resolved, `init()`:
 
 - warns once: `[@nais/apm] No telemetry collector URL resolved …`,
 - sends **nothing** over the network,
