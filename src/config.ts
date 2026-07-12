@@ -140,6 +140,14 @@ export function versionFromImage(image: string | undefined): string | undefined 
   if (!image) {
     return undefined;
   }
+  // A digest suffix is not a tag: `app@sha256:…` must yield no version, and
+  // `app:v1@sha256:…` must yield `v1` — without this, the digest's colon wins
+  // and 64 hex chars leak into app.version (found by the nais/naiserator#687
+  // adversarial review; naiserator's generator mirrors this logic).
+  const at = image.indexOf('@');
+  if (at !== -1) {
+    image = image.slice(0, at);
+  }
   const colon = image.lastIndexOf(':');
   if (colon === -1 || colon < image.lastIndexOf('/')) {
     return undefined; // no tag, or the colon belongs to a registry port

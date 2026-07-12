@@ -311,4 +311,10 @@ describe('versionFromImage', () => {
     expect(versionFromImage('ghcr.io/navikt/app')).toBeUndefined();
     expect(versionFromImage(undefined)).toBeUndefined();
   });
+
+  it('never returns digest hex as the version (nais/naiserator#687 review)', () => {
+    expect(versionFromImage('ghcr.io/navikt/app@sha256:deadbeefcafe')).toBeUndefined();
+    expect(versionFromImage('ghcr.io/navikt/app:v1@sha256:deadbeefcafe')).toBe('v1');
+    expect(versionFromImage('registry.local:5000/app@sha256:deadbeefcafe')).toBeUndefined();
+  });
 });
