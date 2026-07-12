@@ -2,7 +2,7 @@
 
 A drop-in browser telemetry SDK for applications running on [nais](https://nais.io). `@nais/apm` wraps [`@grafana/faro-web-sdk`](https://github.com/grafana/faro-web-sdk) with a Sentry-like developer experience — zero-config initialization on nais, `captureException`/`captureMessage`/`setUser`-style APIs, mandatory PII scrubbing, a fixed console-capture bug, and opt-in session replay / crash snapshots — and ships everything to your team's self-hosted Grafana LGTM stack (Alloy `faro.receiver` → Loki/Tempo/Mimir) instead of a third-party SaaS.
 
-> **Status: 0.1.0, pre-release.** This is the first published version, intended for early external testing. The public API may still change before 1.0 — pin an exact version and expect breaking changes to land in minor releases until then. Feedback and issues are very welcome: [nais/apm/issues](https://github.com/nais/apm/issues).
+> **Status: pre-1.0.** In active development and released continuously (see [Releases](https://github.com/nais/apm/releases) for the current version). The public API may still change before 1.0 — pin an exact version and expect breaking changes to land in minor releases until then. Feedback and issues are very welcome: [nais/apm/issues](https://github.com/nais/apm/issues).
 
 ## Install
 
