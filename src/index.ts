@@ -35,8 +35,8 @@ export {
 export type { CaptureExceptionOptions, SeverityLevel, User, PushMeasurementOptions } from './api.js';
 export { captureFeedback, FEEDBACK_EVENT_NAME } from './feedback.js';
 export type { CaptureFeedbackOptions, FeedbackCategory } from './feedback.js';
-export { resolveConfig, versionFromImage, fromNaisConfig, isLocalHost } from './config.js';
-export type { ConfigOptions, ResolvedConfig, NaisGeneratedConfig } from './config.js';
+export { resolveConfig, versionFromImage, fromNaisConfig, isLocalHost, navTenant } from './config.js';
+export type { ConfigOptions, ResolvedConfig, NaisGeneratedConfig, TenantProfile } from './config.js';
 export { getNaisMetaTags, renderNaisMetaTags } from './metaTags.js';
 export type { NaisMetaTag } from './metaTags.js';
 export { NaisConsoleInstrumentation, CONSOLE_ERROR_PREFIX } from './console.js';

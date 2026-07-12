@@ -4,6 +4,7 @@ import {
   _resetDevModeWarning,
   fromNaisConfig,
   isLocalHost,
+  navTenant,
   resolveConfig,
   versionFromImage,
 } from './config.js';
@@ -176,6 +177,43 @@ describe('fromNaisConfig', () => {
     expect(fromNaisConfig(undefined)).toEqual({});
     expect(fromNaisConfig('nonsense' as never)).toEqual({});
     expect(fromNaisConfig({ app: {} })).toEqual({});
+  });
+});
+
+describe('navTenant profile', () => {
+  it('maps prod hostnames to the prod collector', () => {
+    for (const host of ['nav.no', 'www.nav.no', 'myapp.intern.nav.no', 'myapp.ansatt.nav.no']) {
+      expect(navTenant.telemetryUrlFromHostname?.(host)).toBe('https://telemetry.nav.no/collect');
+    }
+  });
+
+  it('maps dev hostnames to the dev collector (dev checked before prod)', () => {
+    for (const host of [
+      'dev.nav.no',
+      'myapp.ekstern.dev.nav.no',
+      'myapp.intern.dev.nav.no',
+      'myapp.ansatt.dev.nav.no',
+    ]) {
+      expect(navTenant.telemetryUrlFromHostname?.(host)).toBe(
+        'https://telemetry.ekstern.dev.nav.no/collect'
+      );
+    }
+  });
+
+  it('does not match non-nav or lookalike hosts', () => {
+    for (const host of ['example.com', 'evil-nav.no.example.com', 'notnav.no.evil.io', 'xnav.no']) {
+      expect(navTenant.telemetryUrlFromHostname?.(host)).toBeUndefined();
+    }
+  });
+
+  it('maps cluster names as before', () => {
+    expect(navTenant.telemetryUrlFromCluster?.('prod-gcp')).toBe(
+      'https://telemetry.nav.no/collect'
+    );
+    expect(navTenant.telemetryUrlFromCluster?.('dev-fss')).toBe(
+      'https://telemetry.ekstern.dev.nav.no/collect'
+    );
+    expect(navTenant.telemetryUrlFromCluster?.('ci')).toBeUndefined();
   });
 });
 

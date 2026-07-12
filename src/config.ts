@@ -40,6 +40,15 @@ export interface ConfigOptions {
    * the console. Use this to diagnose "why is nothing being sent".
    */
   debug?: boolean;
+  /**
+   * The tenant profile supplying last-resort collector derivation (ADR-0001
+   * decision 7). Defaults to the built-in nav profile ({@link navTenant});
+   * pass `false` to disable derivation entirely, or your own profile for a
+   * different nais tenant. INTERIM: scheduled for demotion once the
+   * platform-served well-known config URL ships (nais/grafana-apm-app#134
+   * phase 3) — never rely on it for a tenant other than nav.
+   */
+  tenant?: TenantProfile | false;
 }
 
 export interface ResolvedConfig {
@@ -140,32 +149,64 @@ export function versionFromImage(image: string | undefined): string | undefined 
 }
 
 /**
- * Well-known nais collectors, derived from the cluster name as a last resort
- * (https://docs.nais.io/observability/frontend/).
- *
- * This is a fallback below the `<meta name="nais-telemetry-url">` tag / env
- * var, which is the primary, tenant-agnostic resolution path (the platform
- * injects the correct collector URL for whichever tenant serves the app).
- * The URLs below are a nav-specific assumption: Nais APM is currently
- * installed for the nav tenant only, and this fallback hardcodes nav's
- * collector domain rather than deriving it per tenant. Keep it for now (nav
- * is the only tenant, and removing it would regress zero-config apps that
- * rely on it), but it must become tenant-aware — or be dropped in favor of
- * always requiring the injected meta tag/env — before Nais APM ships to a
- * tenant other than nav. See nais/grafana-apm-app#86 for the full inventory.
+ * A tenant's last-resort collector derivation (ADR-0001 decision 7). Every
+ * nais tenant is a physically isolated installation (own clusters, own
+ * naiserator, own top-level domain), so anything domain-shaped is per-tenant
+ * knowledge and lives behind this interface — never in the shared resolution
+ * code. The tenant-agnostic paths (meta tags, generatedConfig, env) always
+ * win; a profile only fires when nothing else resolved.
  */
-function telemetryUrlFromCluster(cluster: string | undefined): string | undefined {
-  if (!cluster) {
-    return undefined;
-  }
-  if (cluster.startsWith('prod-')) {
-    return 'https://telemetry.nav.no/collect';
-  }
-  if (cluster.startsWith('dev-')) {
-    return 'https://telemetry.ekstern.dev.nav.no/collect';
-  }
-  return undefined;
+export interface TenantProfile {
+  /** Short tenant name, used in debug/source labels (e.g. `'nav'`). */
+  name: string;
+  /** Derive the collector URL from a cluster name (e.g. `prod-gcp`). */
+  telemetryUrlFromCluster?(cluster: string): string | undefined;
+  /**
+   * Derive the collector URL from the page's hostname. Only consulted on
+   * non-local hosts. This is what makes bare `init({ app, namespace })` send
+   * telemetry from a static bundle when no runtime channel is wired up yet.
+   */
+  telemetryUrlFromHostname?(hostname: string): string | undefined;
 }
+
+const NAV_PROD_COLLECTOR = 'https://telemetry.nav.no/collect';
+const NAV_DEV_COLLECTOR = 'https://telemetry.ekstern.dev.nav.no/collect';
+
+/**
+ * The built-in nav tenant profile (https://docs.nais.io/observability/frontend/).
+ * Nais APM is currently installed for the nav tenant only; other tenants must
+ * rely on the platform channels (meta tag / generatedConfig / env) or supply
+ * their own profile. INTERIM per ADR-0001: both derivations are demoted once
+ * the platform-served well-known config URL ships (nais/grafana-apm-app#134
+ * phase 3, tracked with #86).
+ *
+ * Note: only the collector URL is derived — never `environment`. The hostname
+ * cannot tell prod-gcp from prod-fss, and a fabricated cluster name is worse
+ * than an absent one.
+ */
+export const navTenant: TenantProfile = {
+  name: 'nav',
+  telemetryUrlFromCluster(cluster) {
+    if (cluster.startsWith('prod-')) {
+      return NAV_PROD_COLLECTOR;
+    }
+    if (cluster.startsWith('dev-')) {
+      return NAV_DEV_COLLECTOR;
+    }
+    return undefined;
+  },
+  telemetryUrlFromHostname(hostname) {
+    const host = hostname.toLowerCase();
+    // dev first: *.dev.nav.no also ends with .nav.no.
+    if (host === 'dev.nav.no' || host.endsWith('.dev.nav.no')) {
+      return NAV_DEV_COLLECTOR;
+    }
+    if (host === 'nav.no' || host.endsWith('.nav.no')) {
+      return NAV_PROD_COLLECTOR;
+    }
+    return undefined;
+  },
+};
 
 /**
  * True when the page is served from a genuinely local host — the only case
@@ -255,15 +296,28 @@ export function resolveConfig(options: ConfigOptions = {}): ResolvedConfig {
     [readMeta('nais-version'), 'meta nais-version'],
     [envVersion, envSha ? 'env GITHUB_SHA' : 'env NAIS_APP_IMAGE tag']
   );
+  const tenant = options.tenant === false ? undefined : (options.tenant ?? navTenant);
+  const hostname =
+    typeof window !== 'undefined' && window.location ? window.location.hostname : undefined;
+  const local = isLocalHost(hostname);
+
   const [telemetryUrl, telemetryUrlSource] = pick(
     [options.telemetryUrl, 'init option'],
     [readMeta('nais-telemetry-url'), 'meta nais-telemetry-url'],
     [envTelemetryUrl, 'env NAIS_FRONTEND_TELEMETRY_COLLECTOR_URL'],
-    [telemetryUrlFromCluster(environment), `derived from cluster '${environment ?? ''}' (nav tenant fallback)`]
+    [
+      environment != null ? tenant?.telemetryUrlFromCluster?.(environment) : undefined,
+      `derived from cluster '${environment ?? ''}' (${tenant?.name ?? 'no'} tenant fallback)`,
+    ],
+    [
+      // Hostname derivation only fires on real (non-local) hosts — locally the
+      // console-echo dev mode is the right outcome, not a network transport.
+      !local && hostname != null ? tenant?.telemetryUrlFromHostname?.(hostname) : undefined,
+      `derived from hostname '${hostname ?? ''}' (${tenant?.name ?? 'no'} tenant fallback)`,
+    ]
   );
 
   const devMode = telemetryUrl == null;
-  const local = isLocalHost();
 
   if (options.debug) {
     // eslint-disable-next-line no-console

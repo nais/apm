@@ -111,7 +111,7 @@ Each field (`app`, `namespace`, `version`, `environment`, `telemetryUrl`) resolv
    them into HTML. Don't write them by hand: use `<NaisMetaTags />` /
    `getNaisMetaTags()` (see below), which read the pod's runtime env for you.
 3. **Environment variables** — `NAIS_APP_NAME`, `NAIS_TEAM` (or `NAIS_NAMESPACE`), `NAIS_FRONTEND_TELEMETRY_COLLECTOR_URL`, and a version derived from `GITHUB_SHA` or `NAIS_APP_IMAGE`'s tag. These are **pod-runtime** values (SSR); in a browser bundle they only exist if your bundler inlines `process.env.*` at build time — which is only ever correct for `version` (via `GITHUB_SHA`, which CI has). **Do not inline `NAIS_CLUSTER_NAME`**: the cluster is unknowable at build time — one image deploys to many clusters — so a baked-in value is wrong in at least one of them.
-4. **Collector fallback** — with no explicit/meta/env collector URL, a well-known collector is derived from the cluster name as a last resort (nav tenant only).
+4. **Tenant fallback** — with no explicit/meta/env collector URL, the collector is derived from the cluster name (when known) or — on non-local hosts — from the page's hostname (`*.nav.no` → prod collector, `*.dev.nav.no` → dev collector). Built in for the nav tenant only, and explicitly interim: it is demoted once the platform serves config on a well-known URL. Other tenants pass their own `tenant` profile or rely on the platform channels; `tenant: false` disables derivation.
 5. **Dev mode / loud failure** — if no collector URL resolves at all: on a genuinely local host (`localhost`, `127.0.0.1`, `*.local`) nothing is sent and everything echoes to the console (see [Local development](#local-development)); on **any other host this is a misconfiguration** and the SDK emits a specific `console.error` naming what's missing and how to fix it. It never throws.
 
 Diagnose any resolution question with `init({ debug: true })` — it prints a per-field table of which source won.
@@ -187,9 +187,12 @@ init({
   app: 'my-app',
   namespace: 'my-team',
   // version: inlined from GITHUB_SHA by your bundler (safe — CI knows the SHA)
-  telemetryUrl: 'https://telemetry.nav.no/collect', // until a platform-served config URL exists
 });
 ```
+
+On nav domains this works as-is: the collector is derived from the page's hostname
+(the interim tenant fallback above). Off nav domains, pass `telemetryUrl` explicitly
+until the platform serves config on a well-known URL.
 
 ### `captureException(error, options?)`
 

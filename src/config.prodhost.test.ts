@@ -1,15 +1,17 @@
 // @vitest-environment jsdom
-// @vitest-environment-options { "url": "https://myapp.intern.nav.no/" }
+// @vitest-environment-options { "url": "https://myapp.example.com/" }
 /**
  * The loud-failure path (ADR-0001 decision 6): this file pins jsdom to a real
- * (non-local) nais host, where a missing collector URL is a production
- * misconfiguration — a specific `console.error`, never silent dev mode.
+ * (non-local, non-nav) host, where a missing collector URL is a production
+ * misconfiguration — a specific `console.error`, never silent dev mode. The
+ * host is deliberately outside the nav domains so the interim hostname
+ * fallback does not fire.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { _resetDevModeWarning, isLocalHost, resolveConfig } from './config.js';
 
-describe('resolveConfig on a non-local host', () => {
+describe('resolveConfig on a non-local, non-nav host', () => {
   beforeEach(() => {
     _resetDevModeWarning();
     vi.spyOn(console, 'warn').mockImplementation(() => {});
@@ -40,5 +42,19 @@ describe('resolveConfig on a non-local host', () => {
         .mocked(console.error)
         .mock.calls.some((c) => String(c[0]).includes('namespace (team) is required'))
     ).toBe(true);
+  });
+
+  it('a custom tenant profile supplies the collector for a non-nav installation', () => {
+    const config = resolveConfig({
+      app: 'a',
+      namespace: 'team-x',
+      tenant: {
+        name: 'other-agency',
+        telemetryUrlFromHostname: (hostname) =>
+          hostname.endsWith('.example.com') ? 'https://telemetry.example.com/collect' : undefined,
+      },
+    });
+    expect(config.telemetryUrl).toBe('https://telemetry.example.com/collect');
+    expect(config.devMode).toBe(false);
   });
 });
