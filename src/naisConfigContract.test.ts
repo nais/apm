@@ -17,9 +17,13 @@ import type { NaisGeneratedConfig } from './config.js';
 const NAIS_JS_V0 =
   "\nexport default {\n\ttelemetryCollectorURL: 'http://telemetry-collector',\n\tapp: {\n\t\tname: 'myapplication',\n\t\tversion: '1.2.3'\n\t}\n};\n";
 
-/** nais/naiserator#687: the completed schemaVersion 1 contract. */
+/**
+ * nais/naiserator#687 (post adversarial review): the completed schemaVersion 1
+ * contract. The module wraps the SAME marshalled JSON as nais.json —
+ * `export default <json>;` — one escaped serialization backs both formats.
+ */
 const NAIS_JS_V1 =
-  "\nexport default {\n\tschemaVersion: 1,\n\ttelemetryCollectorURL: 'http://telemetry-collector',\n\tapp: {\n\t\tname: 'myapplication',\n\t\tnamespace: 'mynamespace',\n\t\tversion: '1.2.3'\n\t},\n\tenvironment: 'mycluster'\n};\n";
+  'export default {\n\t"schemaVersion": 1,\n\t"telemetryCollectorURL": "http://telemetry-collector",\n\t"app": {\n\t\t"name": "myapplication",\n\t\t"namespace": "mynamespace",\n\t\t"version": "1.2.3"\n\t},\n\t"environment": "mycluster"\n};\n';
 
 async function importNaisJs(source: string): Promise<NaisGeneratedConfig> {
   const module = (await import(
