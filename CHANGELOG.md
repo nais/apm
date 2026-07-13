@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.5.1](https://github.com/nais/apm/compare/apm-v0.5.0...apm-v0.5.1) (2026-07-13)
+
+
+### Bug Fixes
+
+* **config:** versionFromImage must not return digest hex; sync contract fixture ([#22](https://github.com/nais/apm/issues/22)) ([54b66e1](https://github.com/nais/apm/commit/54b66e1ad211b403b1da03bf2730145f3cd8c244))
+
+
+### Documentation
+
+* unpin the stale 0.1.0 status line from the README ([#21](https://github.com/nais/apm/issues/21)) ([95b5a91](https://github.com/nais/apm/commit/95b5a914aa35a90cafb19aca0e7843acdff18e06))
+
 ## [0.5.0](https://github.com/nais/apm/compare/apm-v0.4.0...apm-v0.5.0) (2026-07-12)
 
 
