@@ -142,15 +142,6 @@ export interface InitOptions extends ConfigOptions {
 }
 
 /**
- * Initialize @nais/apm. Zero-config on nais: app name, version, environment
- * and collector URL are resolved from nais meta tags or build-time env; with
- * no collector resolved (local dev) all telemetry is echoed to the console.
- *
- * Opt into distributed tracing with `init({ tracing: true })`; the tracing
- * machinery (`@grafana/faro-web-tracing`) is lazily loaded so it stays out of
- * the bundle when tracing is not enabled.
- */
-/**
  * Initialize @nais/apm from a served nais generated-config file — the
  * naiserator `spec.frontend.generatedConfig` payload mounted into the app's
  * web root (nais/grafana-apm-app#134), or, later, the platform's well-known
@@ -212,6 +203,16 @@ export async function initFromConfigUrl(
   return init(merged);
 }
 
+/**
+ * Initialize @nais/apm. Zero-config on nais: app name, version, environment
+ * and collector URL are resolved from nais meta tags or build-time env; with
+ * no collector resolved (local dev) all telemetry is echoed to the console
+ * (silence that with `init({ devConsoleEcho: false })`).
+ *
+ * Opt into distributed tracing with `init({ tracing: true })`; the tracing
+ * machinery (`@grafana/faro-web-tracing`) is lazily loaded so it stays out of
+ * the bundle when tracing is not enabled.
+ */
 export function init(options: InitOptions = {}): Faro {
   const existing = getStoredFaro();
   if (existing) {
@@ -243,8 +244,12 @@ export function init(options: InitOptions = {}): Faro {
       new NaisConsoleInstrumentation(),
     ],
     ignoreErrors: [...DEFAULT_IGNORE_ERRORS, ...(options.ignoreErrors ?? [])],
+    // Dev mode defaults: echo to the console, or — with devConsoleEcho:
+    // false — an empty transport list (Faro accepts it; telemetry is
+    // dropped). Like every default here, the `faro` escape hatch spread
+    // below can still override `transports`.
     ...(config.devMode
-      ? { transports: [new ConsoleTransport()] }
+      ? { transports: options.devConsoleEcho === false ? [] : [new ConsoleTransport()] }
       : { url: config.telemetryUrl }),
     ...options.faro,
     beforeSend: composeBeforeSend(

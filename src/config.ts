@@ -41,6 +41,15 @@ export interface ConfigOptions {
    */
   debug?: boolean;
   /**
+   * Echo telemetry to the console when running in dev mode (no collector
+   * resolved on a local host). Defaults to `true`. Set `false` to silence
+   * both the echo and the once-only dev-mode notice during local
+   * development — telemetry is still dropped, nothing is ever sent. Has no
+   * effect when a collector is resolved, and does not silence the loud
+   * misconfiguration error on non-local hosts.
+   */
+  devConsoleEcho?: boolean;
+  /**
    * The tenant profile supplying last-resort collector derivation (ADR-0001
    * decision 7). Defaults to the built-in nav profile ({@link navTenant});
    * pass `false` to disable derivation entirely, or your own profile for a
@@ -340,17 +349,30 @@ export function resolveConfig(options: ConfigOptions = {}): ResolvedConfig {
         ]
           .map(([field, value, source]) => `  ${field} = ${value ?? '(unresolved)'} ← ${source}`)
           .join('\n') +
-        `\n  mode = ${devMode ? (local ? 'dev (console echo)' : 'MISCONFIGURED (nothing sent)') : 'sending'}`
+        `\n  mode = ${
+          devMode
+            ? local
+              ? options.devConsoleEcho === false
+                ? 'dev (silent)'
+                : 'dev (console echo)'
+              : 'MISCONFIGURED (nothing sent)'
+            : 'sending'
+        }`
     );
   }
 
   if (devMode) {
-    if (local && !warnedDevMode) {
+    // With devConsoleEcho: false the developer asked for silence, so the
+    // dev-mode notice is skipped too — but the non-local misconfiguration
+    // error below stays loud regardless (it signals a broken deploy, not
+    // local development).
+    if (local && options.devConsoleEcho !== false && !warnedDevMode) {
       warnedDevMode = true;
       // eslint-disable-next-line no-console
       console.warn(
         '[@nais/apm] No telemetry collector URL resolved (no init option, nais meta tag, or NAIS_* env). ' +
-          'Running in dev mode: telemetry is echoed to the console and nothing is sent.'
+          'Running in dev mode: telemetry is echoed to the console and nothing is sent. ' +
+          'Silence this with init({ devConsoleEcho: false }).'
       );
     } else if (!local && !warnedMissingCollector) {
       warnedMissingCollector = true;

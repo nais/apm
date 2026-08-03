@@ -35,6 +35,14 @@ describe('resolveConfig on a non-local, non-nav host', () => {
     expect(message).toContain('debug: true');
   });
 
+  it('devConsoleEcho: false does not silence the misconfiguration error', () => {
+    resolveConfig({ app: 'a', namespace: 'team-x', devConsoleEcho: false });
+    expect(console.error).toHaveBeenCalledTimes(1);
+    expect(String(vi.mocked(console.error).mock.calls[0]?.[0])).toContain(
+      'telemetry will NOT be sent'
+    );
+  });
+
   it('loud-errors for a missing namespace even without a collector', () => {
     resolveConfig({ app: 'a' });
     expect(
