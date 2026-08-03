@@ -376,6 +376,14 @@ On a genuinely local host (`localhost`, `127.0.0.1`, `*.local`, `*.localhost`) w
 - sends **nothing** over the network,
 - echoes every signal to the browser console instead, so you can see exactly what would have been sent.
 
+If the echo is more noise than help, turn it off:
+
+```ts
+init({ devConsoleEcho: false });
+```
+
+This silences both the echo and the once-only dev-mode notice — telemetry is still dropped, nothing is sent. It has no effect when a collector is resolved, and it never silences the loud misconfiguration error on non-local hosts.
+
 Calling `captureException`/`captureMessage`/`setUser`/etc. before `init()` is a safe no-op (with a single warning).
 
 ## Escape hatch

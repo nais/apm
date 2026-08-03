@@ -144,7 +144,8 @@ export interface InitOptions extends ConfigOptions {
 /**
  * Initialize @nais/apm. Zero-config on nais: app name, version, environment
  * and collector URL are resolved from nais meta tags or build-time env; with
- * no collector resolved (local dev) all telemetry is echoed to the console.
+ * no collector resolved (local dev) all telemetry is echoed to the console
+ * (silence that with `init({ devConsoleEcho: false })`).
  *
  * Opt into distributed tracing with `init({ tracing: true })`; the tracing
  * machinery (`@grafana/faro-web-tracing`) is lazily loaded so it stays out of
@@ -243,8 +244,10 @@ export function init(options: InitOptions = {}): Faro {
       new NaisConsoleInstrumentation(),
     ],
     ignoreErrors: [...DEFAULT_IGNORE_ERRORS, ...(options.ignoreErrors ?? [])],
+    // Dev mode: echo to the console, or — with devConsoleEcho: false — no
+    // transports at all (Faro accepts an empty list; telemetry is dropped).
     ...(config.devMode
-      ? { transports: [new ConsoleTransport()] }
+      ? { transports: options.devConsoleEcho === false ? [] : [new ConsoleTransport()] }
       : { url: config.telemetryUrl }),
     ...options.faro,
     beforeSend: composeBeforeSend(

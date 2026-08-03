@@ -107,6 +107,13 @@ describe('resolveConfig', () => {
     expect(vi.mocked(console.warn).mock.calls[0]?.[0]).toContain('dev mode');
   });
 
+  it('skips the dev-mode warning when devConsoleEcho is false', () => {
+    const config = resolveConfig({ namespace: 'team-x', devConsoleEcho: false });
+    expect(config.devMode).toBe(true);
+    expect(console.warn).not.toHaveBeenCalled();
+    expect(console.error).not.toHaveBeenCalled();
+  });
+
   it('ignores empty meta tag content', () => {
     addMeta('nais-app', '');
     vi.stubEnv('NAIS_APP_NAME', 'env-app');
