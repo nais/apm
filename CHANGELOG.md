@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.6.0](https://github.com/nais/apm/compare/apm-v0.5.0...apm-v0.6.0) (2026-08-05)
+
+
+### Features
+
+* **config:** devConsoleEcho option to silence dev-mode console echo ([#29](https://github.com/nais/apm/issues/29)) ([de0b930](https://github.com/nais/apm/commit/de0b9300dea1fffddc0b89034739f3bf792b272f))
+
+
+### Bug Fixes
+
+* **config:** route legacy dev ingresses (*.dev.intern.nav.no) to the dev collector ([#31](https://github.com/nais/apm/issues/31)) ([4af9c69](https://github.com/nais/apm/commit/4af9c69a32d14118ee3b4acaf14aa52a92332c42))
+* **config:** versionFromImage must not return digest hex; sync contract fixture ([#22](https://github.com/nais/apm/issues/22)) ([54b66e1](https://github.com/nais/apm/commit/54b66e1ad211b403b1da03bf2730145f3cd8c244))
+* **deps:** declare @grafana/rrweb-types so pnpm typecheck resolves it ([#30](https://github.com/nais/apm/issues/30)) ([a7b4d07](https://github.com/nais/apm/commit/a7b4d07680cd19686d81affc492511c911a2003c))
+
+
+### Documentation
+
+* unpin the stale 0.1.0 status line from the README ([#21](https://github.com/nais/apm/issues/21)) ([95b5a91](https://github.com/nais/apm/commit/95b5a914aa35a90cafb19aca0e7843acdff18e06))
+
 ## [0.5.0](https://github.com/nais/apm/compare/apm-v0.4.0...apm-v0.5.0) (2026-07-12)
 
 
