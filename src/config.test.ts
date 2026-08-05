@@ -107,6 +107,41 @@ describe('resolveConfig', () => {
     expect(vi.mocked(console.warn).mock.calls[0]?.[0]).toContain('dev mode');
   });
 
+  describe('navTenant.telemetryUrlFromHostname', () => {
+    const DEV = 'https://telemetry.ekstern.dev.nav.no/collect';
+    const PROD = 'https://telemetry.nav.no/collect';
+    const derive = (host: string) => navTenant.telemetryUrlFromHostname!(host);
+
+    it('routes modern dev ingresses to the dev collector', () => {
+      expect(derive('ung.intern.dev.nav.no')).toBe(DEV);
+      expect(derive('app.ekstern.dev.nav.no')).toBe(DEV);
+      expect(derive('app.ansatt.dev.nav.no')).toBe(DEV);
+      expect(derive('dev.nav.no')).toBe(DEV);
+    });
+
+    it('routes legacy dev ingresses (dev label before intern) to the dev collector', () => {
+      // Old dev-fss ingress pattern — a `.dev.nav.no` suffix check alone
+      // sent these to the PROD collector (reported by k9saksbehandling).
+      expect(derive('k9.dev.intern.nav.no')).toBe(DEV);
+    });
+
+    it('routes prod ingresses to the prod collector', () => {
+      expect(derive('nav.no')).toBe(PROD);
+      expect(derive('www.nav.no')).toBe(PROD);
+      expect(derive('myapp.intern.nav.no')).toBe(PROD);
+      expect(derive('myapp.ansatt.nav.no')).toBe(PROD);
+    });
+
+    it('only a whole dev label counts — devtools.intern.nav.no stays prod', () => {
+      expect(derive('devtools.intern.nav.no')).toBe(PROD);
+    });
+
+    it('derives nothing for non-nav hosts', () => {
+      expect(derive('example.com')).toBeUndefined();
+      expect(derive('nav.no.evil.example')).toBeUndefined();
+    });
+  });
+
   it('skips the dev-mode warning when devConsoleEcho is false', () => {
     const config = resolveConfig({ namespace: 'team-x', devConsoleEcho: false });
     expect(config.devMode).toBe(true);

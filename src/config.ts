@@ -214,14 +214,18 @@ export const navTenant: TenantProfile = {
   },
   telemetryUrlFromHostname(hostname) {
     const host = hostname.toLowerCase();
-    // dev first: *.dev.nav.no also ends with .nav.no.
-    if (host === 'dev.nav.no' || host.endsWith('.dev.nav.no')) {
+    if (host !== 'nav.no' && !host.endsWith('.nav.no')) {
+      return undefined;
+    }
+    // A literal `dev` DNS label anywhere in the name marks a dev-cluster
+    // ingress. The modern pattern puts it late (*.intern.dev.nav.no), but
+    // legacy dev-fss ingresses still serve *.dev.intern.nav.no — a suffix
+    // check on `.dev.nav.no` alone misrouted those to the PROD collector.
+    // The label must match exactly: devtools.intern.nav.no stays prod.
+    if (host.split('.').includes('dev')) {
       return NAV_DEV_COLLECTOR;
     }
-    if (host === 'nav.no' || host.endsWith('.nav.no')) {
-      return NAV_PROD_COLLECTOR;
-    }
-    return undefined;
+    return NAV_PROD_COLLECTOR;
   },
 };
 
