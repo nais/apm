@@ -40,6 +40,27 @@ describe('scrubString — fødselsnummer', () => {
     expect(scrubString('32137012345')).toBe('32137012345');
   });
 
+  it('masks a letter-glued fnr only when the mod11 control digits check out', () => {
+    expect(scrubString('bruker01017000027 lookup')).toBe('bruker[fnr] lookup');
+    expect(scrubString('sak01017012345')).toBe('sak01017012345');
+  });
+
+  it('does not let an embedded fnr break the surrounding email match', () => {
+    // The fnr pass used to run first and leave `ola.nordmann[fnr]@nav.no` —
+    // `]` is outside EMAIL's charset, so the address survived unscrubbed.
+    expect(scrubString('ola.nordmann01017000027@nav.no')).toBe('[email]');
+    expect(scrubString('01017000027@nav.no')).toBe('[email]');
+  });
+
+  it('leaves hex identifiers alone when an fnr-shaped slice sits inside them', () => {
+    // Found by fuzzing random traceIds: ~1 in 100k contains an 11-digit run
+    // that clears mod11 and a plausible date. Rewriting it breaks trace
+    // correlation, and looksLikePii then blanks the whole value to [ident].
+    const traceId = 'f71896339626c26f3931c4db4eafef0e';
+    expect(scrubString(traceId)).toBe(traceId);
+    expect(looksLikePii(traceId)).toBe(false);
+  });
+
   it('leaves shorter and longer digit runs alone', () => {
     expect(scrubString('0101701234')).toBe('0101701234');
     expect(scrubString('010170123456')).toBe('010170123456');
@@ -50,6 +71,16 @@ describe('scrubString — emails', () => {
   it('masks emails', () => {
     expect(scrubString('Contact ola.nordmann@nav.no now')).toBe('Contact [email] now');
     expect(scrubString('a+b@sub.example.co.uk!')).toBe('[email]!');
+  });
+
+  it('does not blow up on a long local-part run with no @ (polynomial ReDoS)', () => {
+    // The EMAIL quantifiers are bounded to their RFC 5321 limits. Unbounded,
+    // this input took ~2.6s of main-thread time; bounded it is ~9ms. The
+    // threshold is deliberately loose — it only has to catch a reintroduced
+    // `+`, not measure performance.
+    const started = performance.now();
+    expect(scrubString('%'.repeat(64_000))).toBe('%'.repeat(64_000));
+    expect(performance.now() - started).toBeLessThan(500);
   });
 });
 

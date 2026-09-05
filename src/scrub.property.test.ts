@@ -12,6 +12,24 @@ import fc from 'fast-check';
 
 import { looksLikePii, scrubString, scrubUrl } from './scrub.js';
 
+it('no shipped source uses a regex lookbehind — parse-time SyntaxError on Safari < 16.4', () => {
+  // This SDK is imported by every host app, and an unparseable module takes the
+  // whole bundle down with it — so the ban covers everything we publish, not
+  // just the scrubber. Vite's `?raw` loader reads the sources at transform time,
+  // so this needs neither `@types/node` nor a runtime file read.
+  // @ts-expect-error -- `import.meta.glob` is a Vite built-in; no ambient declaration in this repo.
+  const sources = import.meta.glob('./**/*.ts', {
+    query: '?raw',
+    import: 'default',
+    eager: true,
+  }) as Record<string, string>;
+  const shipped = Object.entries(sources).filter(([path]) => !path.includes('.test.'));
+  expect(shipped.length).toBeGreaterThan(10); // the glob actually resolved something
+  for (const [path, source] of shipped) {
+    expect(source, `${path} must stay lookbehind-free`).not.toMatch(/\(\?<[!=]/);
+  }
+});
+
 const two = (n: number): string => String(n).padStart(2, '0');
 
 /** 11-digit fødselsnummer with a plausible DDMMYY prefix (incl. D/H/synthetic variants). */
@@ -37,14 +55,31 @@ const emailArb = fc
   )
   .map(([local, domain, tld]) => `${local}@${domain}.${tld}`);
 
+/** 11-digit fnr whose two mod11 control digits actually check out. */
+const K1_WEIGHTS = [3, 7, 6, 1, 8, 9, 4, 5, 2];
+const K2_WEIGHTS = [5, 4, 3, 2, 7, 6, 5, 4, 3, 2];
+const control = (digits: string, weights: number[]): number => {
+  const rest = 11 - (weights.reduce((acc, w, i) => acc + w * Number(digits[i]), 0) % 11);
+  return rest === 11 ? 0 : rest;
+};
+/** Append the two control digits to a 9-digit stem; `null` when they are unrepresentable. */
+const withControlDigits = (stem: string): string | null => {
+  const k1 = control(stem, K1_WEIGHTS);
+  if (k1 === 10) return null;
+  const k2 = control(stem + k1, K2_WEIGHTS);
+  return k2 === 10 ? null : `${stem}${k1}${k2}`;
+};
+const validFnrArb = fnrArb
+  .map((fnr) => withControlDigits(fnr.slice(0, 9)))
+  .filter((fnr): fnr is string => fnr !== null);
+
 /**
- * Surrounding text that preserves the scrubber's `\b` word boundaries. The
- * contract is: an fnr is detected when DELIMITED by non-word characters
- * (space, punctuation, start/end of string). A word character (letter, digit,
- * `_`) glued directly onto the number breaks the boundary by design — digits
- * because the 11 digits would just be part of a longer number (false-positive
- * guard), letters as a side effect of `\b` (see the documented-limitation
- * test at the bottom).
+ * Surrounding text that preserves the scrubber's digit boundaries. The
+ * contract is: an fnr is detected when DELIMITED by non-digits (space,
+ * punctuation, start/end of string). A digit glued directly onto the number
+ * breaks the boundary by design — the 11 digits would just be part of a longer
+ * number (false-positive guard). Letters and `_` no longer break it, but a
+ * letter-glued run must pass mod11 to be masked (nais/apm#20).
  */
 const delimiterArb = fc.constantFrom(' ', '.', ',', ':', ';', '(', ')', '/', '\n', '\t', '"', "'", '!');
 const textArb = fc.stringMatching(/^[a-zA-ZæøåÆØÅ0-9 .,]{0,20}$/);
@@ -79,16 +114,75 @@ describe('scrubString properties', () => {
     );
   });
 
-  it('documents a known limitation: word-glued fnr is NOT detected (\\b boundary guard)', () => {
-    // Found by the properties above on their first run (seed preserved in the
-    // PR description): a letter glued directly onto the digits breaks the \b
-    // boundary, so `bruker01017012345` passes through unscrubbed. Digits-glued
-    // is deliberate (part of a longer number); letters-glued is a side effect
-    // of \b treating [A-Za-z0-9_] uniformly. Tightening this means trading
-    // against false positives on letter+digit identifiers — tracked as a
-    // product decision, not silently changed here.
-    expect(scrubString('bruker01017012345')).toBe('bruker01017012345');
-    expect(scrubString('a41810000000')).toBe('a41810000000');
+  it('redacts a letter-glued fnr when the mod11 control digits check out', () => {
+    fc.assert(
+      fc.property(validFnrArb, fc.stringMatching(/^[a-zæøå]{1,10}$/), (fnr, word) => {
+        expect(scrubString(`${word}${fnr}`)).toBe(`${word}[fnr]`);
+        expect(scrubString(`${fnr}${word}`)).toBe(`[fnr]${word}`);
+      })
+    );
+  });
+
+  it('leaves a letter-glued 11-digit run alone when mod11 fails', () => {
+    // The gap that nais/apm#20 closed, and the guard that came with it. `\b`
+    // used to let ANY letter-glued run through; digit-only lookarounds catch
+    // them, and mod11 keeps case numbers / external identifiers that merely
+    // contain a plausible 11-digit run out of the false-positive bucket.
+    expect(scrubString('bruker01017000027')).toBe('bruker[fnr]'); // valid → masked
+    expect(scrubString('bruker01017012345')).toBe('bruker01017012345'); // bad control digits
+    expect(scrubString('a41810000000')).toBe('a41810000000'); // #20's counterexample
+    expect(scrubString('sak_01017012345')).toBe('sak_01017012345');
+  });
+
+  it('still leaves an fnr-shaped run inside a longer number alone', () => {
+    fc.assert(
+      fc.property(validFnrArb, fc.integer({ min: 1, max: 9 }), (fnr, digit) => {
+        expect(scrubString(`${digit}${fnr}`)).not.toContain('[fnr]');
+        expect(scrubString(`${fnr}${digit}`)).not.toContain('[fnr]');
+      })
+    );
+  });
+
+  it('leaves hex identifiers alone when a valid fnr slice sits inside them', () => {
+    // Each of these is a real generated traceId/spanId carrying an 11-digit run
+    // that clears BOTH mod11 control digits and a plausible date — every one was
+    // rewritten before the hex-flank guard (e.g. the first became
+    // `007acc536a[fnr]c22305e9b6a`), which breaks trace correlation in this
+    // SDK's own payloads and makes looksLikePii blank the value to [ident].
+    // Canonical dashed UUIDs cannot hit this: no segment is long enough to hold
+    // a hex letter + 11 digits + a hex letter. Undashed 32-hex ids are traceIds.
+    const hexIds = [
+      '007acc536a01087335832c22305e9b6a',
+      'e17042517844b644d28fe09afa20618f',
+      '46f33e2f21128833894d2acf90729b58',
+      'f71896339626c26f3931c4db4eafef0e',
+      'f02100674184ceab',
+      'c5a11060825868cf',
+    ];
+    for (const id of hexIds) {
+      expect(scrubString(id)).toBe(id);
+      expect(looksLikePii(id)).toBe(false);
+    }
+  });
+
+  it('still masks an fnr glued to a hex letter on one side only', () => {
+    // The guard needs hex letters on BOTH sides, so #20's fix is untouched:
+    // `bruker`/`sak`-style prefixes glue on one side and still qualify.
+    expect(scrubString('a01017000027 ')).toBe('a[fnr] ');
+    expect(scrubString(' 01017000027f')).toBe(' [fnr]f');
+    expect(scrubString('bruker01017000027')).toBe('bruker[fnr]');
+  });
+
+  it('does not let a rejected candidate swallow the fnr that overlaps it', () => {
+    // The scanner's reason for existing: the greedy optional space matches
+    // `123456 01017` first, which is rejected (a digit follows). Skipping past
+    // it would eat the real fnr starting at offset 7.
+    expect(scrubString('123456 01017000027')).toBe('123456 [fnr]');
+    fc.assert(
+      fc.property(fnrArb, fc.stringMatching(/^[0-9]{6}$/), (fnr, noise) => {
+        expect(scrubString(`${noise} ${fnr}`)).toBe(`${noise} [fnr]`);
+      })
+    );
   });
 
   it('redacts any generated email wherever it is embedded', () => {

@@ -312,7 +312,7 @@ console.log(scrubString('contact me at user@example.com'));
 
 Every outgoing signal (exception values, stack traces, log lines, context values, custom measurement/event labels, and the page URL) passes through a `beforeSend` scrubbing pipeline before it leaves the browser:
 
-- **Norwegian fødselsnummer** (11 digits, sanity-checked against a plausible date prefix, including D-numbers, H-numbers, and synthetic test numbers) → `[fnr]`
+- **Norwegian fødselsnummer** (11 digits, sanity-checked against a plausible date prefix, including D-numbers, H-numbers, and synthetic test numbers) → `[fnr]`. A run glued to an ASCII letter or `_` (`bruker01017000027`) is caught too, but only when its mod11 control digits check out — that keeps case numbers and external identifiers that merely contain a plausible 11-digit run intact. A run glued to another digit is never masked: 11 digits inside a longer number are not an fnr. Neither is a run sitting between two lowercase hex letters, which is a slice of a traceId or UUID rather than an fnr. A non-ASCII neighbour (`æøå`) counts as a delimiter, so those runs mask on the date prefix alone — the same asymmetry the old `\b` had, and it errs toward more scrubbing.
 - **Email addresses** → `[email]`
 - **Token-bearing URL parameters** (`token`, `access_token`, `id_token`, `refresh_token`, `code`, `state`) → `[redacted]`
 - **Raw NAV idents** (a letter + six digits, e.g. `Z994455`) in custom measurement `context` and event `attributes` → `[ident]`. Whole-value match only, so ordinary low-cardinality labels are left alone; numeric measurement `values` are the metric and are never touched. Names (e.g. an `enhetNavn`) are not pattern-shaped and are **not** caught — don't put them in labels.
