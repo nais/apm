@@ -45,13 +45,14 @@ const WORD_GLUE = /[A-Za-z_]/;
 // measurement context. A real letter-glued fnr in prose is never flanked by hex
 // letters on BOTH sides, while `bruker`/`sak`-style prefixes glue on one side
 // only, so requiring both keeps #20's fix intact.
-// Measured over 3M random 32-char traceIds: 1/24.8k rewritten before this
-// guard, 1/143k after — an 82.6% cut.
-// ponytail: the 17% residual is a run sitting at the very start or end of a hex
-// id, where one neighbour is the string edge rather than a hex letter. Upgrade
-// path if that ever bites: skip when the *maximal* surrounding `[0-9a-f]` run is
-// >= 16 chars, which covers the edges too and still masks `bruker01017000027`
-// (`r` is not a hex letter, so that run is only 11 long).
+// Measured cut (independent 2-3M-sample corpora per shape): traceId 32-hex
+// ~70%, sessionId 20-hex ~64%, spanId 16-hex ~48% — and dashed UUIDs 0%: an
+// 11-digit run in a UUID group is flanked by `-` (a delimiter, not a hex
+// letter), so this guard never fires there (~1/133k UUIDs still rewritten).
+// ponytail: the residual is runs at a hex id's edges or next to `-`. Upgrade
+// path if that ever bites: treat `-` between hex groups as hex context, or skip
+// when the maximal surrounding `[0-9a-f-]` run is >= 12 chars — both still mask
+// `bruker01017000027` (`r`/`u` are not hex letters).
 const HEX_LETTER = /[a-f]/;
 // Quantifiers are bounded to their RFC 5321 limits (local part 64, domain 255)
 // rather than left as `+`. Unbounded, a long run of local-part characters with
