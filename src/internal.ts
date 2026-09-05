@@ -91,6 +91,40 @@ export function getGlobalContext(): Record<string, string> {
   return state.globalContext;
 }
 
+/**
+ * Marker for errors an explicit capture path already owns. React 19 logs every
+ * error caught by a boundary through `console.error` (the default
+ * `onCaughtError`, in dev AND prod builds) BEFORE calling `componentDidCatch`,
+ * so `NaisConsoleInstrumentation` would report it once and `ApmErrorBoundary`
+ * a second time (nais/apm#36). `ApmErrorBoundary` marks the error in
+ * `getDerivedStateFromError` — which runs before the console log — and the
+ * console capture path skips marked errors, leaving exactly one report.
+ *
+ * `Symbol.for` so two copies of this package in one bundle still agree.
+ */
+const CAPTURED = Symbol.for('@nais/apm.captured');
+
+/** @internal Mark an error as owned by an explicit capture path. */
+export function markErrorCaptured(error: unknown): void {
+  if (typeof error !== 'object' || error === null) {
+    return;
+  }
+  try {
+    Object.defineProperty(error, CAPTURED, { value: true, configurable: true });
+  } catch {
+    // Frozen/sealed error object: dedupe is best-effort, never fatal.
+  }
+}
+
+/** @internal True when {@link markErrorCaptured} has claimed this error. */
+export function wasErrorCaptured(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    (error as Record<symbol, unknown>)[CAPTURED] === true
+  );
+}
+
 /** @internal test helper */
 export function _resetStateForTesting(): void {
   state.faro = undefined;
