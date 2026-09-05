@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.2](https://github.com/nais/apm/compare/apm-v0.6.1...apm-v0.6.2) (2026-09-05)
+
+
+### Bug Fixes
+
+* **scrub:** catch letter-glued fnr, gated on mod11 control digits ([#39](https://github.com/nais/apm/issues/39)) ([a7f1cda](https://github.com/nais/apm/commit/a7f1cda0eab4f2c9c756352f3b5018b9dfde090e))
+
 ## [0.6.1](https://github.com/nais/apm/compare/apm-v0.6.0...apm-v0.6.1) (2026-09-05)
 
 
