@@ -1,0 +1,15 @@
+# pnpm settings (https://pnpm.io/settings). Overrides below are Dependabot
+# security pins for transitive dependencies we do not control directly.
+overrides:
+  # GHSA-r28c-9q8g-f849, GHSA-fxqj-rqcc-2cmp — @grafana/rrweb-snapshot pulls
+  # postcss 8.5.16 (arbitrary .map file disclosure). Also drags nanoid to 3.3.18.
+  postcss: '>=8.5.26'
+  # GHSA-28wg-ghj8-5hjv, GHSA-2v37-7h3g-55p8 — nanoid infinite loops.
+  nanoid: '>=3.3.18'
+  # GHSA-jqff-g426-hqxp, GHSA-f65p-4m7j-42xc, GHSA-fph4-wmhf-6fwf,
+  # GHSA-5jgf-p345-68v8 — fast-uri host confusion / SSRF. Scoped to the 3.x
+  # line: ajv (the only consumer) declares ^3.0.1, so keep it off the 4.x major.
+  fast-uri: '>=3.1.6 <4'
+  # GHSA-qwww-vcr4-c8h2 — RSC-mode CSRF bypass. Scoped to the v8 line only:
+  # react-router-dom 7.x needs react-router 7.x and must not be dragged along.
+  'react-router@>=8.0.0 <8.3.0': '>=8.3.1'
