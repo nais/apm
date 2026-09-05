@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.3](https://github.com/nais/apm/compare/apm-v0.6.2...apm-v0.6.3) (2026-09-05)
+
+
+### Bug Fixes
+
+* **deps:** pin transitive dependencies flagged by Dependabot ([#41](https://github.com/nais/apm/issues/41)) ([e92588c](https://github.com/nais/apm/commit/e92588c4ae512b001bd5c35b33b8fa2a6a47aaa9))
+
 ## [0.6.2](https://github.com/nais/apm/compare/apm-v0.6.1...apm-v0.6.2) (2026-09-05)
 
 
