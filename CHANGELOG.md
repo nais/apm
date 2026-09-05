@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.1](https://github.com/nais/apm/compare/apm-v0.6.0...apm-v0.6.1) (2026-09-05)
+
+
+### Bug Fixes
+
+* **react:** report caught render errors exactly once under React 19 ([#37](https://github.com/nais/apm/issues/37)) ([26c72f0](https://github.com/nais/apm/commit/26c72f0412f6e98bc9aac7ec91e06fcbbdead7f6))
+
 ## [0.6.0](https://github.com/nais/apm/compare/apm-v0.5.0...apm-v0.6.0) (2026-08-05)
 
 
