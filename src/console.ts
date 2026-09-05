@@ -18,6 +18,7 @@
 
 import { BaseInstrumentation, isError } from '@grafana/faro-web-sdk';
 
+import { wasErrorCaptured } from './internal.js';
 import { serializeConsoleArgs } from './serialize.js';
 import { VERSION } from './version.js';
 
@@ -57,6 +58,12 @@ export class NaisConsoleInstrumentation extends BaseInstrumentation {
     const error = args.find((arg): arg is Error => isError(arg));
 
     if (error) {
+      if (wasErrorCaptured(error)) {
+        // Another capture path (ApmErrorBoundary) already owns this error and
+        // reports it with fingerprint + component stack. React 19 logs caught
+        // render errors through console.error too; skip so it lands once (#36).
+        return;
+      }
       // Real Error found (any position): push it as-is so Faro parses the
       // ORIGINAL stack; preserve the remaining args as context.
       const rest = args.filter((arg) => arg !== error);

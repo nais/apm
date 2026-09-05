@@ -15,6 +15,7 @@ import { Component, isValidElement } from 'react';
 import type { ComponentType, ErrorInfo, ReactElement, ReactNode } from 'react';
 
 import { captureException } from '../api.js';
+import { markErrorCaptured } from '../internal.js';
 
 /** Render-prop fallback: receives the error and a reset callback. */
 export type ApmErrorBoundaryFallbackRender = (
@@ -83,6 +84,12 @@ export class ApmErrorBoundary extends Component<
   }
 
   static getDerivedStateFromError(error: Error): ApmErrorBoundaryState {
+    // Claim the error before React 19's default `onCaughtError` logs it with
+    // `console.error` (which happens after this render-phase call and before
+    // `componentDidCatch`), so NaisConsoleInstrumentation skips it and this
+    // boundary stays the single reporter — with fingerprint and component
+    // stack attached. See nais/apm#36.
+    markErrorCaptured(error);
     return { error };
   }
 
