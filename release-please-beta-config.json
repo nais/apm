@@ -6,6 +6,7 @@
       "package-name": "@nais/apm",
       "include-v-in-tag": true,
       "bump-minor-pre-major": true,
+      "versioning": "prerelease",
       "prerelease": true,
       "prerelease-type": "beta",
       "changelog-sections": [
