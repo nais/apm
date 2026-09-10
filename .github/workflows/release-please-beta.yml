@@ -75,7 +75,7 @@ jobs:
             exit 1
           fi
           case "$PKG_VERSION" in
-            *-beta.*) ;;
+            *-beta|*-beta.*) ;;
             *)
               echo "::error::refusing to publish non-beta version $PKG_VERSION with the beta dist-tag."
               exit 1
