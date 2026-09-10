@@ -1,0 +1,95 @@
+name: Release beta
+
+on:
+  push:
+    branches: [beta]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Beta release tag to (re)publish, e.g. apm-v0.7.0-beta.0'
+        required: true
+        type: string
+
+concurrency:
+  group: release-beta-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release-please:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      pull-requests: write
+    outputs:
+      releases_created: ${{ steps.release.outputs.releases_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+    steps:
+      - name: Run release-please
+        id: release
+        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          config-file: release-please-beta-config.json
+          manifest-file: .release-please-beta-manifest.json
+
+  publish:
+    needs: release-please
+    if: |
+      !cancelled() &&
+      (needs.release-please.outputs.releases_created == 'true' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: write
+    env:
+      RELEASE_TAG: ${{ needs.release-please.outputs.tag_name || inputs.tag }}
+    steps:
+      - name: Checkout release tag
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: '22.12.0'
+          cache: pnpm
+          registry-url: https://npm.pkg.github.com
+          scope: '@nais'
+
+      - name: Verify prerelease package version matches release tag
+        run: |
+          PKG_VERSION="$(node -p "require('./package.json').version")"
+          EXPECTED="${RELEASE_TAG#apm-}"
+          EXPECTED="${EXPECTED#v}"
+          if [ "$PKG_VERSION" != "$EXPECTED" ]; then
+            echo "::error::package.json version ($PKG_VERSION) does not match release tag $RELEASE_TAG (expected version $EXPECTED)."
+            exit 1
+          fi
+          case "$PKG_VERSION" in
+            *-beta.*) ;;
+            *)
+              echo "::error::refusing to publish non-beta version $PKG_VERSION with the beta dist-tag."
+              exit 1
+              ;;
+          esac
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Test
+        run: pnpm test
+
+      - name: Build
+        run: pnpm build
+
+      - name: Publish beta to GitHub Package Registry
+        run: pnpm publish --no-git-checks --tag beta
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
