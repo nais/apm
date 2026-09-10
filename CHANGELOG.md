@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.4-beta](https://github.com/nais/apm/compare/apm-v0.6.3...apm-v0.6.4-beta) (2026-09-10)
+
+
+### Bug Fixes
+
+* **release:** exercise beta release pipeline ([#51](https://github.com/nais/apm/issues/51)) ([26abf72](https://github.com/nais/apm/commit/26abf725d04ed9bb015f76feabea36db3de91e65))
+
 ## [0.6.3](https://github.com/nais/apm/compare/apm-v0.6.2...apm-v0.6.3) (2026-09-05)
 
 
