@@ -41,7 +41,7 @@ export { getNaisMetaTags, renderNaisMetaTags } from './metaTags.js';
 export type { NaisMetaTag } from './metaTags.js';
 export { NaisConsoleInstrumentation, CONSOLE_ERROR_PREFIX } from './console.js';
 export { scrubString } from './scrub.js';
-export { isInitialized } from './internal.js';
+export { isInitialized, markErrorCaptured } from './internal.js';
 export { VERSION } from './version.js';
 
 /**
