@@ -19,9 +19,13 @@ jobs:
       - name: Create synchronization pull request
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
         run: |
-          if gh pr list --base beta --head main --state open --json number --jq 'length' | grep -qx '0'; then
+          set -euo pipefail
+          open_pr_count="$(gh pr list --repo "$GH_REPO" --base beta --head main --state open --json number --jq 'length')"
+          if [ "$open_pr_count" -eq 0 ]; then
             gh pr create \
+              --repo "$GH_REPO" \
               --base beta \
               --head main \
               --title "chore: sync main into beta" \
