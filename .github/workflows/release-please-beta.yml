@@ -36,9 +36,10 @@ jobs:
 
   publish:
     needs: release-please
-    if: |
+    if: >-
       !cancelled() &&
-      (needs.release-please.outputs.releases_created == 'true' || github.event_name == 'workflow_dispatch')
+      (needs.release-please.outputs.releases_created == 'true' ||
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/beta'))
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
