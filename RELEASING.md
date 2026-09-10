@@ -58,9 +58,10 @@ Conventional Commit — this is what makes release-please's version inference tr
 - Full `pnpm test` + `pnpm build` run again before publish, at the tagged commit.
 - Publishes to the `latest` dist-tag.
 
-## Pre-releases
+## Stable and beta release flows
 
-Pre-releases use the dedicated `beta` branch. Create it from `main` once:
+Pre-releases use the dedicated `beta` branch. It currently exists. To recreate it from
+`main` if it is ever deleted:
 
 ```sh
 git switch main
@@ -69,30 +70,55 @@ git switch -c beta
 git push -u origin beta
 ```
 
-Merge the selected changes into `beta`. The **Release beta** workflow maintains a Release
-PR on that branch. Merging its Release PR creates a version such as `0.7.0-beta.0` and
-publishes it to GHPR with the `beta` dist-tag:
+### Stable release without a beta
 
-```sh
-pnpm add @nais/apm@beta
-```
+1. Merge the implementation PR into `main`.
+2. Review and merge the stable Release PR that release-please creates on `main`.
+   This publishes `X.Y.Z` under `latest`.
+3. Merge the **chore: sync main into beta** PR after its CI passes. This keeps beta's
+   source current. Do not merge a beta Release PR if no beta package is needed.
+
+No package is published under `beta` in this flow. `@nais/apm@beta` continues to resolve
+to the most recently published beta, which can be older than `@nais/apm@latest`.
+
+### Beta release before stable
+
+1. Open an implementation PR targeting `beta` and merge it after CI passes.
+2. The **Release beta** workflow creates or updates a beta Release PR. Review and merge
+   that PR to publish a version such as `0.7.0-beta.0` under the `beta` dist-tag.
+3. External users install the test release with:
+
+   ```sh
+   pnpm add @nais/apm@beta
+   ```
+
+4. When the change is ready, open an implementation PR targeting `main`. Do not merge
+   the beta Release PR into `main`.
+5. Merge the stable Release PR on `main` to publish `X.Y.Z` under `latest`.
+6. Merge the resulting **chore: sync main into beta** PR to bring the stable-line changes
+   back to the beta branch.
+
+### Synchronizing beta
 
 The beta workflow uses `release-please-beta-config.json` and
 `.release-please-beta-manifest.json`; its prerelease history is isolated from the stable
-release history on `main`. `main` keeps publishing stable versions to `latest`.
+release history on `main`. Every push to `main` creates or updates a **chore: sync main
+into beta** pull request. Merge it after CI passes. The workflow creates a PR instead of
+pushing directly to the protected beta branch.
 
-Every push to `main` creates or updates a **Sync beta from main** pull request. Merge that
-PR into `beta` after CI passes. This keeps beta's source current without granting a
-workflow permission to push directly to `beta`. The synchronization does not publish a
-package. If no beta Release PR is merged, `@nais/apm@beta` can remain older than
-`@nais/apm@latest`.
+A synchronization PR can conflict after either branch has merged a Release PR because
+release-please updates `package.json`, `CHANGELOG.md`, and its manifest. Resolve these
+conflicts deliberately:
 
-Protect `beta` from deletion and force-pushes. Require pull requests, linear history, and
-the `ci-ok` status check. Do not grant the synchronization workflow a ruleset bypass.
+- Keep `.release-please-beta-manifest.json` from `beta`; it is beta's release state.
+- Keep the intended beta `package.json` version. Do not replace a beta version with the
+  stable version just to make the merge clean.
+- Retain relevant changelog entries from both branches, then let the next Release PR
+  produce the normal release bookkeeping.
 
-To promote a beta, merge the same changes into `main` and merge the stable Release PR.
-Do not merge a beta Release PR into `main`, and do not change
-`release-please-config.json` to enable prereleases.
+Protect `beta` from deletion and force-pushes. Require pull requests, one approving review,
+linear history, and the `ci-ok` status check. Allow squash merges only. Do not grant the
+synchronization workflow a ruleset bypass.
 
 To re-publish a beta tag manually, run **Release beta** from the `beta` branch and supply
 that beta tag. The workflow rejects manual runs from other branches.
