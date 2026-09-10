@@ -81,8 +81,8 @@ The beta workflow uses `release-please-beta-config.json` and
 `.release-please-beta-manifest.json`; its prerelease history is isolated from the stable
 release history on `main`. `main` keeps publishing stable versions to `latest`.
 
-Every push to `main` creates or updates a **Sync beta from main** pull request. Merge that
-PR into `beta` after CI passes. This keeps beta's source current without granting a
+Every push to `main` creates or updates a **chore: sync main into beta** pull request.
+Merge that PR into `beta` after CI passes. This keeps beta's source current without granting a
 workflow permission to push directly to `beta`. The synchronization does not publish a
 package. If no beta Release PR is merged, `@nais/apm@beta` can remain older than
 `@nais/apm@latest`.
