@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.6.4](https://github.com/nais/apm/compare/apm-v0.6.3...apm-v0.6.4) (2026-09-10)
+
+
+### Bug Fixes
+
+* **release:** accept valid beta versions ([#61](https://github.com/nais/apm/issues/61)) ([8eaff56](https://github.com/nais/apm/commit/8eaff566fb1b7568837b9e78da03e96d0090b546))
+* **release:** clarify beta release flows ([#49](https://github.com/nais/apm/issues/49)) ([8c969cf](https://github.com/nais/apm/commit/8c969cf63fba7eb80709f4e898e9286b6b447ca1))
+* **release:** enable beta prerelease versioning ([#58](https://github.com/nais/apm/issues/58)) ([ecc2e29](https://github.com/nais/apm/commit/ecc2e2970459aab82546ce00e9e2485d649fb831))
+* **release:** restrict beta manual publishing ([#47](https://github.com/nais/apm/issues/47)) ([84a81ae](https://github.com/nais/apm/commit/84a81ae879a681a59b38d73e6b161e71afa0259e))
+* **release:** target beta branch ([#55](https://github.com/nais/apm/issues/55)) ([473453a](https://github.com/nais/apm/commit/473453a1b119170da558aa7ddf4059f08b41e2db))
+
 ## [0.6.3](https://github.com/nais/apm/compare/apm-v0.6.2...apm-v0.6.3) (2026-09-05)
 
 
