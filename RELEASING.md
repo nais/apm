@@ -85,7 +85,8 @@ to the most recently published beta, which can be older than `@nais/apm@latest`.
 
 1. Open an implementation PR targeting `beta` and merge it after CI passes.
 2. The **Release beta** workflow creates or updates a beta Release PR. Review and merge
-   that PR to publish a version such as `0.7.0-beta.0` under the `beta` dist-tag.
+   that PR to publish a version such as `0.7.0-beta` or `0.7.0-beta.1` under the `beta`
+   dist-tag.
 3. External users install the test release with:
 
    ```sh
