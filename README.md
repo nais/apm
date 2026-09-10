@@ -297,6 +297,29 @@ if (!isInitialized()) {
 }
 ```
 
+### `markErrorCaptured(error)`
+
+For teams with their own React error boundary (instead of `ApmErrorBoundary` from `@nais/apm/react`) who call `captureException` directly. Marks an error as already reported so `NaisConsoleInstrumentation` doesn't report it a second time — React 19 logs every caught error via `console.error` (the default `onCaughtError`) before `componentDidCatch` runs, and the console instrumentation would otherwise treat that as a brand-new, unreported error.
+
+Call it from `getDerivedStateFromError`, not `componentDidCatch` — the console log happens in between, so marking it any later is too late:
+
+```tsx
+import { captureException, markErrorCaptured } from '@nais/apm';
+
+class MyErrorBoundary extends Component<Props, State> {
+  static getDerivedStateFromError(error: Error) {
+    markErrorCaptured(error);
+    return { error };
+  }
+
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    captureException(error, { context: { componentStack: info.componentStack } });
+  }
+
+  // ...render fallback UI
+}
+```
+
 ### `scrubString(value)`
 
 Exposes the PII scrubber directly, e.g. if you want to sanitize a string before logging it yourself.
