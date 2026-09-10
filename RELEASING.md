@@ -60,9 +60,30 @@ Conventional Commit — this is what makes release-please's version inference tr
 
 ## Pre-releases
 
-The previous manual `next` dist-tag pre-release flow is retired. If pre-releases are
-needed again, configure a release-please prerelease channel (a `release-please-config.json`
-`prerelease` setting on a dedicated branch) rather than hand-cutting one.
+Pre-releases use the dedicated `beta` branch. Create it from `main` once:
+
+```sh
+git switch main
+git pull --ff-only
+git switch -c beta
+git push -u origin beta
+```
+
+Merge the selected changes into `beta`. The **Release beta** workflow maintains a Release
+PR on that branch. Merging its Release PR creates a version such as `0.7.0-beta.0` and
+publishes it to GHPR with the `beta` dist-tag:
+
+```sh
+pnpm add @nais/apm@beta
+```
+
+The beta workflow uses `release-please-beta-config.json` and
+`.release-please-beta-manifest.json`; its prerelease history is isolated from the stable
+release history on `main`. `main` keeps publishing stable versions to `latest`.
+
+To promote a beta, merge the same changes into `main` and merge the stable Release PR.
+Do not merge a beta Release PR into `main`, and do not change
+`release-please-config.json` to enable prereleases.
 
 ## The first release is pinned to 0.1.0
 

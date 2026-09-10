@@ -65,5 +65,9 @@ that computes the next version, rewrites `CHANGELOG.md`, and bumps
 `package.json`. **Merging that Release PR** cuts the tag + GitHub Release and
 publishes to the **GitHub Package Registry (GHPR)** from the same workflow run.
 
+The dedicated `beta` branch runs a separate prerelease workflow. Its Release PRs publish
+versions such as `X.Y.Z-beta.N` under the `beta` dist-tag. See
+[`RELEASING.md`](RELEASING.md#pre-releases) before using it.
+
 See [`RELEASING.md`](RELEASING.md) for the full flow, including the
 `GITHUB_TOKEN` gotcha and the GHPR / npm-provenance notes.
