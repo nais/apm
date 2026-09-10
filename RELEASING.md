@@ -94,6 +94,9 @@ To promote a beta, merge the same changes into `main` and merge the stable Relea
 Do not merge a beta Release PR into `main`, and do not change
 `release-please-config.json` to enable prereleases.
 
+To re-publish a beta tag manually, run **Release beta** from the `beta` branch and supply
+that beta tag. The workflow rejects manual runs from other branches.
+
 ## The first release is pinned to 0.1.0
 
 The manifest (`.release-please-manifest.json`) is seeded at `0.0.0` — the "not
