@@ -123,6 +123,9 @@ synchronization workflow a ruleset bypass.
 To re-publish a beta tag manually, run **Release beta** from the `beta` branch and supply
 that beta tag. The workflow rejects manual runs from other branches.
 
+To re-publish a beta tag manually, run **Release beta** from the `beta` branch and supply
+that beta tag. The workflow rejects manual runs from other branches.
+
 ## The first release is pinned to 0.1.0
 
 The manifest (`.release-please-manifest.json`) is seeded at `0.0.0` — the "not
