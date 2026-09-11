@@ -228,6 +228,10 @@ init({
 
 `originalError` is stripped from the payload right after your `beforeSend` hooks run, so it never reaches the collector — only the composed hook sees it.
 
+This also covers errors the SDK captures automatically, not just explicit `captureException` calls: `init()` installs `NaisErrorsInstrumentation` in place of Faro's built-in `window.onerror`/`unhandledrejection` instrumentation, so `originalError` is forwarded consistently for uncaught throws *and* unhandled promise rejections (Faro's own instrumentation only forwards it for `window.onerror`, not `unhandledrejection`). If your app has its own `unhandledrejection` listener that calls `captureException(reason)` for the same rejection, you can remove it: the SDK's listener already reports it (with `originalError`) before yours would run, and Faro's `dedupe` would otherwise have silently swallowed your call anyway (see below).
+
+> **Heads up — Faro's `dedupe` (on by default) can hide this in quick manual tests.** Faro compares each pushed error's `type`/`value`/`stacktrace`/`context`/`fingerprint`/`fatal` against the previous one; if it's identical to the last push, the call is dropped **before `beforeSend` ever runs** — so `originalError` (and the whole item) never shows up. This is why re-triggering the exact same error twice without a `fingerprint` can look like `originalError` "only works with `fingerprint`": adding a `fingerprint` (or any other context) simply makes the payload distinct enough to bypass dedupe, it isn't required for `originalError` itself. Throw/capture visibly different errors when testing, or disable it with `init({ faro: { dedupe: false } })` if you need every identical capture reported.
+
 ### `captureMessage(message, level?)`
 
 ```ts

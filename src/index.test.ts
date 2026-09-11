@@ -102,4 +102,17 @@ describe('init()', () => {
     });
     pushError.mockRestore();
   });
+
+  it('registers exactly one unhandledrejection listener that forwards originalError', () => {
+    const pushError = vi.spyOn(faro.api, 'pushError');
+    const reason = new Error('async boom');
+
+    window.dispatchEvent(
+      Object.assign(new Event('unhandledrejection'), { reason, promise: Promise.reject().catch(() => {}) })
+    );
+
+    expect(pushError).toHaveBeenCalledTimes(1);
+    expect(pushError.mock.calls[0]?.[1]).toMatchObject({ originalError: reason });
+    pushError.mockRestore();
+  });
 });
