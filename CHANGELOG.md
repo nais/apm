@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.0-beta.1](https://github.com/nais/apm/compare/apm-v0.6.4-beta.1...apm-v0.7.0-beta.1) (2026-09-11)
+
+
+### Features
+
+* **api:** forward original Error to Faro's beforeSend via originalError ([#53](https://github.com/nais/apm/issues/53)) ([2e4766c](https://github.com/nais/apm/commit/2e4766c9a8012333add2780df60ea2c8fc4fd8dc))
+
 ## [0.6.4-beta.1](https://github.com/nais/apm/compare/apm-v0.6.4-beta...apm-v0.6.4-beta.1) (2026-09-10)
 
 
