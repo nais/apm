@@ -96,7 +96,10 @@ describe('init()', () => {
 
     captureException(err, { fingerprint: 'group-1' });
 
-    expect(pushError).toHaveBeenCalledWith(err, { context: { fingerprint: 'group-1' } });
+    expect(pushError).toHaveBeenCalledWith(err, {
+      context: { fingerprint: 'group-1' },
+      originalError: err,
+    });
     pushError.mockRestore();
   });
 });

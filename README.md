@@ -211,6 +211,23 @@ try {
 }
 ```
 
+If `error` is an `Error` instance, it is forwarded to Faro's `pushError` as `originalError` too. Combine this with Faro's `preserveOriginalError` (via the `faro` escape hatch) to get the actual thrown instance inside your own `beforeSend`, e.g. to branch on error type/shape in one central place before reporting:
+
+```ts
+init({
+  faro: { preserveOriginalError: true },
+  beforeSend: (item) => {
+    if (item.type === 'exception') {
+      const original = (item.payload as { originalError?: Error }).originalError;
+      // inspect `original` (e.g. `instanceof SomeCustomError`) and adjust/drop `item`
+    }
+    return item;
+  },
+});
+```
+
+`originalError` is stripped from the payload right after your `beforeSend` hooks run, so it never reaches the collector — only the composed hook sees it.
+
 ### `captureMessage(message, level?)`
 
 ```ts

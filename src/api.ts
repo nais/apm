@@ -75,6 +75,13 @@ function toError(value: unknown): Error {
 /**
  * Capture an exception. Sentry-compatible replacement for
  * `Sentry.captureException`. Note: Faro's `pushError` returns no event ID.
+ *
+ * When `error` is an `Error` instance, it is also forwarded as Faro's
+ * `originalError` pushError option. Combined with `init({ faro: {
+ * preserveOriginalError: true } })`, the real Error instance rides along on
+ * `item.payload.originalError` and is visible to a custom `beforeSend` hook
+ * before Faro strips it — a single place to branch on error type/shape before
+ * reporting.
  */
 export function captureException(error: unknown, options: CaptureExceptionOptions = {}): void {
   // Context and error are snapshotted at call time so buffered calls (an async
@@ -87,8 +94,16 @@ export function captureException(error: unknown, options: CaptureExceptionOption
     context['fingerprint'] = options.fingerprint;
   }
   const error_ = toError(error);
+  // Only a real Error instance can carry `originalError` (Faro types it as
+  // `Error`); coerced strings/objects have nothing more original than `error_`
+  // itself. With `preserveOriginalError: true` in the Faro escape hatch, this
+  // survives into the `beforeSend` payload (`item.payload.originalError`) so
+  // callers can inspect the actual thrown instance before it is stripped.
+  const originalError = error instanceof Error ? error : undefined;
+  const hasContext = Object.keys(context).length > 0;
+  const options_ = hasContext || originalError ? { ...(hasContext && { context }), ...(originalError && { originalError }) } : undefined;
   runOrBuffer((faro) => {
-    faro.api.pushError(error_, Object.keys(context).length > 0 ? { context } : undefined);
+    faro.api.pushError(error_, options_);
   });
 }
 
