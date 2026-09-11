@@ -18,6 +18,7 @@ import type { BeforeSendHook, BrowserConfig, Faro, Patterns } from '@grafana/far
 import { fromNaisConfig, resolveConfig } from './config.js';
 import type { ConfigOptions, NaisGeneratedConfig } from './config.js';
 import { NaisConsoleInstrumentation } from './console.js';
+import { FARO_ERRORS_INSTRUMENTATION_NAME, NaisErrorsInstrumentation } from './errors.js';
 import { getStoredFaro, setFaroInstance, startPreInitBuffering } from './internal.js';
 import { normalizeSessionReplay } from './replay/options.js';
 import { composeBeforeSend } from './scrub.js';
@@ -40,6 +41,7 @@ export type { ConfigOptions, ResolvedConfig, NaisGeneratedConfig, TenantProfile 
 export { getNaisMetaTags, renderNaisMetaTags } from './metaTags.js';
 export type { NaisMetaTag } from './metaTags.js';
 export { NaisConsoleInstrumentation, CONSOLE_ERROR_PREFIX } from './console.js';
+export { NaisErrorsInstrumentation } from './errors.js';
 export { scrubString } from './scrub.js';
 export { isInitialized } from './internal.js';
 export { VERSION } from './version.js';
@@ -239,9 +241,17 @@ export function init(options: InitOptions = {}): Faro {
     },
     instrumentations: [
       // captureConsole MUST stay false: NaisConsoleInstrumentation is the only
-      // console patch (see nais/grafana-apm-app#66).
-      ...getWebInstrumentations({ captureConsole: false }),
+      // console patch (see nais/grafana-apm-app#66). Faro's built-in
+      // ErrorsInstrumentation is excluded too: NaisErrorsInstrumentation is a
+      // drop-in replacement that additionally forwards `originalError` for
+      // unhandledrejection (window.onerror behavior is unchanged) — keeps
+      // exactly one window.onerror/unhandledrejection listener, avoiding a
+      // dedupe race with an originalError-less duplicate push.
+      ...getWebInstrumentations({ captureConsole: false }).filter(
+        (instrumentation) => instrumentation.name !== FARO_ERRORS_INSTRUMENTATION_NAME
+      ),
       new NaisConsoleInstrumentation(),
+      new NaisErrorsInstrumentation(),
     ],
     ignoreErrors: [...DEFAULT_IGNORE_ERRORS, ...(options.ignoreErrors ?? [])],
     // Dev mode defaults: echo to the console, or — with devConsoleEcho:
