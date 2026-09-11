@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.0-beta.2](https://github.com/nais/apm/compare/apm-v0.7.0-beta.1...apm-v0.7.0-beta.2) (2026-09-11)
+
+
+### Bug Fixes
+
+* **errors:** forward originalError for unhandledrejection via NaisErrorsInstrumentation ([#68](https://github.com/nais/apm/issues/68)) ([19589cf](https://github.com/nais/apm/commit/19589cfdc167444effeb485e9240dc6771b866ec))
+
 ## [0.7.0-beta.1](https://github.com/nais/apm/compare/apm-v0.6.4-beta.1...apm-v0.7.0-beta.1) (2026-09-11)
 
 
