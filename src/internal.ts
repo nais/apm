@@ -104,7 +104,28 @@ export function getGlobalContext(): Record<string, string> {
  */
 const CAPTURED = Symbol.for('@nais/apm.captured');
 
-/** @internal Mark an error as owned by an explicit capture path. */
+/**
+ * Mark an error as owned by an explicit capture path, so
+ * `NaisConsoleInstrumentation` skips it when React logs it via
+ * `console.error`.
+ *
+ * Only needed if you have your own error boundary and call
+ * `captureException` from it instead of using `ApmErrorBoundary`. Call this
+ * from `getDerivedStateFromError` (NOT `componentDidCatch`) — React 19 logs
+ * caught errors through `console.error` before `componentDidCatch` runs, so
+ * marking it any later is too late to prevent a duplicate report:
+ *
+ * ```tsx
+ * static getDerivedStateFromError(error: Error) {
+ *   markErrorCaptured(error);
+ *   return { error };
+ * }
+ *
+ * componentDidCatch(error: Error, info: ErrorInfo) {
+ *   captureException(error, { context: { componentStack: info.componentStack } });
+ * }
+ * ```
+ */
 export function markErrorCaptured(error: unknown): void {
   if (typeof error !== 'object' || error === null) {
     return;

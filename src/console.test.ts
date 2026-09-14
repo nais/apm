@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { API, PushErrorOptions } from '@grafana/faro-web-sdk';
 
 import { CONSOLE_ERROR_PREFIX, NaisConsoleInstrumentation } from './console.js';
+import { markErrorCaptured } from './internal.js';
 
 type PushErrorCall = [Error, PushErrorOptions | undefined];
 
@@ -163,5 +164,17 @@ describe('NaisConsoleInstrumentation', () => {
     instrumentation.destroy();
     active = undefined;
     expect(console.error).toBe(underlying);
+  });
+
+  it('skips an error already reported via markErrorCaptured, but still logs it', () => {
+    const { instrumentation, pushError } = createInstrumentation();
+    active = instrumentation;
+    const err = new Error('already reported by a custom error boundary');
+    markErrorCaptured(err);
+
+    console.error(err);
+
+    expect(pushError).not.toHaveBeenCalled();
+    expect(underlying).toHaveBeenCalledWith(err);
   });
 });
