@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.0-beta.3](https://github.com/nais/apm/compare/apm-v0.7.0-beta.2...apm-v0.7.0-beta.3) (2026-09-14)
+
+
+### Features
+
+* export markErrorCaptured for custom error boundaries ([#71](https://github.com/nais/apm/issues/71)) ([63290e7](https://github.com/nais/apm/commit/63290e79e73880482a344ea7f16e148a6d55693d))
+
 ## [0.7.0-beta.2](https://github.com/nais/apm/compare/apm-v0.7.0-beta.1...apm-v0.7.0-beta.2) (2026-09-11)
 
 
