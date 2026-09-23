@@ -39,10 +39,10 @@ describe('Sentry-compat API', () => {
   });
 
   describe('captureException', () => {
-    it('pushes the error through faro.api.pushError', () => {
+    it('pushes the error through faro.api.pushError, forwarding it as originalError', () => {
       const err = new Error('boom');
       captureException(err);
-      expect(api.pushError).toHaveBeenCalledWith(err, undefined);
+      expect(api.pushError).toHaveBeenCalledWith(err, { originalError: err });
     });
 
     it('maps fingerprint to context.fingerprint (#62)', () => {
@@ -50,30 +50,36 @@ describe('Sentry-compat API', () => {
       captureException(err, { fingerprint: 'checkout-payment-failure' });
       expect(api.pushError).toHaveBeenCalledWith(err, {
         context: { fingerprint: 'checkout-payment-failure' },
+        originalError: err,
       });
     });
 
     it('passes context and stringifies non-string values', () => {
-      captureException(new Error('x'), { context: { form: 'step-2', attempt: 3 } });
+      const err = new Error('x');
+      captureException(err, { context: { form: 'step-2', attempt: 3 } });
       expect(api.pushError.mock.calls[0]?.[1]).toEqual({
         context: { form: 'step-2', attempt: '3' },
+        originalError: err,
       });
     });
 
     it('merges module-level tags and contexts, per-call context wins', () => {
       setTag('team', 'dagpenger');
       setContext('feature', { nyFlyt: 'variant-b' });
-      captureException(new Error('x'), { context: { 'feature.nyFlyt': 'override' } });
+      const err = new Error('x');
+      captureException(err, { context: { 'feature.nyFlyt': 'override' } });
       expect(api.pushError.mock.calls[0]?.[1]).toEqual({
         context: { team: 'dagpenger', 'feature.nyFlyt': 'override' },
+        originalError: err,
       });
     });
 
-    it('coerces non-Error values', () => {
+    it('coerces non-Error values and does not forward originalError', () => {
       captureException('plain string failure');
       const pushed = api.pushError.mock.calls[0]?.[0] as Error;
       expect(pushed).toBeInstanceOf(Error);
       expect(pushed.message).toBe('plain string failure');
+      expect(api.pushError.mock.calls[0]?.[1]).toBeUndefined();
     });
 
     it('is a no-op with a single warning before init()', () => {
@@ -167,8 +173,9 @@ describe('Sentry-compat API', () => {
     it('removes a named context when passed null', () => {
       setContext('feature', { a: '1', b: '2' });
       setContext('feature', null);
-      captureException(new Error('x'));
-      expect(api.pushError).toHaveBeenCalledWith(expect.any(Error), undefined);
+      const err = new Error('x');
+      captureException(err);
+      expect(api.pushError).toHaveBeenCalledWith(err, { originalError: err });
     });
   });
 
@@ -222,7 +229,7 @@ describe('Sentry-compat API', () => {
 
       setFaroInstance(fake.faro);
 
-      expect(fake.api.pushError).toHaveBeenCalledWith(err, undefined);
+      expect(fake.api.pushError).toHaveBeenCalledWith(err, { originalError: err });
       expect(fake.api.pushLog).toHaveBeenCalledWith(['early message'], {
         level: LogLevel.INFO,
         context: undefined,
@@ -238,11 +245,15 @@ describe('Sentry-compat API', () => {
       startPreInitBuffering();
 
       setTag('phase', 'before');
-      captureException(new Error('x'));
+      const err = new Error('x');
+      captureException(err);
       setTag('phase', 'after'); // must not leak into the already-buffered call
 
       setFaroInstance(fake.faro);
-      expect(fake.api.pushError.mock.calls[0]?.[1]).toEqual({ context: { phase: 'before' } });
+      expect(fake.api.pushError.mock.calls[0]?.[1]).toEqual({
+        context: { phase: 'before' },
+        originalError: err,
+      });
     });
 
     it('buffered calls do not fire the not-initialized warning', () => {
