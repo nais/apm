@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.1](https://github.com/nais/apm/compare/apm-v0.7.0...apm-v0.7.1) (2026-09-23)
+
+
+### Bug Fixes
+
+* **deps:** exclude major bumps from npm-all Dependabot group ([#81](https://github.com/nais/apm/issues/81)) ([c270040](https://github.com/nais/apm/commit/c270040b9ca1c3eb8bc749b51244e54d40c79692))
+
 ## [0.7.0](https://github.com/nais/apm/compare/apm-v0.6.3...apm-v0.7.0) (2026-09-23)
 
 
