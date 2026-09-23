@@ -1,4 +1,22 @@
 # Changelog
+=======
+## [0.7.0](https://github.com/nais/apm/compare/apm-v0.6.3...apm-v0.7.0) (2026-09-23)
+
+
+### Features
+
+* **api:** forward original Error to Faro's beforeSend via originalError ([#53](https://github.com/nais/apm/issues/53)) ([ddf8d6b](https://github.com/nais/apm/commit/ddf8d6b237634621431e4d1910c09f11ab20c9db))
+* export markErrorCaptured for custom error boundaries ([#71](https://github.com/nais/apm/issues/71)) ([ddf8d6b](https://github.com/nais/apm/commit/ddf8d6b237634621431e4d1910c09f11ab20c9db))
+
+
+### Bug Fixes
+
+* **errors:** forward originalError for unhandledrejection via NaisErrorsInstrumentation ([#68](https://github.com/nais/apm/issues/68)) ([ddf8d6b](https://github.com/nais/apm/commit/ddf8d6b237634621431e4d1910c09f11ab20c9db))
+* **release:** accept valid beta versions ([#61](https://github.com/nais/apm/issues/61)) ([8eaff56](https://github.com/nais/apm/commit/8eaff566fb1b7568837b9e78da03e96d0090b546))
+* **release:** clarify beta release flows ([#49](https://github.com/nais/apm/issues/49)) ([8c969cf](https://github.com/nais/apm/commit/8c969cf63fba7eb80709f4e898e9286b6b447ca1))
+* **release:** enable beta prerelease versioning ([#58](https://github.com/nais/apm/issues/58)) ([ecc2e29](https://github.com/nais/apm/commit/ecc2e2970459aab82546ce00e9e2485d649fb831))
+* **release:** restrict beta manual publishing ([#47](https://github.com/nais/apm/issues/47)) ([84a81ae](https://github.com/nais/apm/commit/84a81ae879a681a59b38d73e6b161e71afa0259e))
+* **release:** target beta branch ([#55](https://github.com/nais/apm/issues/55)) ([473453a](https://github.com/nais/apm/commit/473453a1b119170da558aa7ddf4059f08b41e2db))
 
 ## [0.7.0-beta.3](https://github.com/nais/apm/compare/apm-v0.7.0-beta.2...apm-v0.7.0-beta.3) (2026-09-14)
 
