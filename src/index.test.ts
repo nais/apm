@@ -6,7 +6,7 @@ import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { TransportItemType } from '@grafana/faro-web-sdk';
 import type { ExceptionEvent, Faro, TransportItem } from '@grafana/faro-web-sdk';
 
-import { captureException, init } from './index.js';
+import { captureException, init, markErrorCaptured } from './index.js';
 import { _resetStateForTesting } from './internal.js';
 
 function addMeta(name: string, content: string): void {
@@ -96,7 +96,43 @@ describe('init()', () => {
 
     captureException(err, { fingerprint: 'group-1' });
 
-    expect(pushError).toHaveBeenCalledWith(err, { context: { fingerprint: 'group-1' } });
+    expect(pushError).toHaveBeenCalledWith(err, {
+      context: { fingerprint: 'group-1' },
+      originalError: err,
+    });
+    pushError.mockRestore();
+  });
+
+  it('registers exactly one unhandledrejection listener that forwards originalError', () => {
+    const pushError = vi.spyOn(faro.api, 'pushError');
+    const reason = new Error('async boom');
+
+    window.dispatchEvent(
+      Object.assign(new Event('unhandledrejection'), { reason, promise: Promise.reject().catch(() => {}) })
+    );
+
+    expect(pushError).toHaveBeenCalledTimes(1);
+    expect(pushError.mock.calls[0]?.[1]).toMatchObject({ originalError: reason });
+    pushError.mockRestore();
+  });
+
+  it('markErrorCaptured lets a custom error boundary avoid double-reporting via console.error', () => {
+    const pushError = vi.spyOn(faro.api, 'pushError');
+    const err = new Error('render error');
+
+    // Mimics a custom ErrorBoundary: mark in getDerivedStateFromError...
+    markErrorCaptured(err);
+    // ...then React 19 logs the same error via console.error before
+    // componentDidCatch runs. NaisConsoleInstrumentation must skip it.
+    console.error(err);
+    expect(pushError).not.toHaveBeenCalled();
+
+    // ...then componentDidCatch reports it exactly once via captureException.
+    captureException(err, { context: { componentStack: 'at MyComponent' } });
+    expect(pushError).toHaveBeenCalledWith(err, {
+      context: { componentStack: 'at MyComponent' },
+      originalError: err,
+    });
     pushError.mockRestore();
   });
 });

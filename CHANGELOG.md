@@ -1,5 +1,40 @@
 # Changelog
 
+## [0.7.0-beta.3](https://github.com/nais/apm/compare/apm-v0.7.0-beta.2...apm-v0.7.0-beta.3) (2026-09-14)
+
+
+### Features
+
+* export markErrorCaptured for custom error boundaries ([#71](https://github.com/nais/apm/issues/71)) ([63290e7](https://github.com/nais/apm/commit/63290e79e73880482a344ea7f16e148a6d55693d))
+
+## [0.7.0-beta.2](https://github.com/nais/apm/compare/apm-v0.7.0-beta.1...apm-v0.7.0-beta.2) (2026-09-11)
+
+
+### Bug Fixes
+
+* **errors:** forward originalError for unhandledrejection via NaisErrorsInstrumentation ([#68](https://github.com/nais/apm/issues/68)) ([19589cf](https://github.com/nais/apm/commit/19589cfdc167444effeb485e9240dc6771b866ec))
+
+## [0.7.0-beta.1](https://github.com/nais/apm/compare/apm-v0.6.4-beta.1...apm-v0.7.0-beta.1) (2026-09-11)
+
+
+### Features
+
+* **api:** forward original Error to Faro's beforeSend via originalError ([#53](https://github.com/nais/apm/issues/53)) ([2e4766c](https://github.com/nais/apm/commit/2e4766c9a8012333add2780df60ea2c8fc4fd8dc))
+
+## [0.6.4-beta.1](https://github.com/nais/apm/compare/apm-v0.6.4-beta...apm-v0.6.4-beta.1) (2026-09-10)
+
+
+### Bug Fixes
+
+* **release:** retry beta release pipeline ([#64](https://github.com/nais/apm/issues/64)) ([860f84e](https://github.com/nais/apm/commit/860f84e462f2073eacd3b0fd236f16afd31f7b8a))
+
+## [0.6.4-beta](https://github.com/nais/apm/compare/apm-v0.6.3...apm-v0.6.4-beta) (2026-09-10)
+
+
+### Bug Fixes
+
+* **release:** exercise beta release pipeline ([#51](https://github.com/nais/apm/issues/51)) ([26abf72](https://github.com/nais/apm/commit/26abf725d04ed9bb015f76feabea36db3de91e65))
+
 ## [0.6.3](https://github.com/nais/apm/compare/apm-v0.6.2...apm-v0.6.3) (2026-09-05)
 
 
