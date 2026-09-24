@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.2](https://github.com/nais/apm/compare/apm-v0.7.1...apm-v0.7.2) (2026-09-24)
+
+
+### Bug Fixes
+
+* pin @grafana/faro-web-sdk to 2.11.0 (CORS regression on dev-gcp) ([#87](https://github.com/nais/apm/issues/87)) ([3805e49](https://github.com/nais/apm/commit/3805e496cce09d4f8807eadcf5de3d533204ad12))
+
 ## [0.7.1](https://github.com/nais/apm/compare/apm-v0.7.0...apm-v0.7.1) (2026-09-23)
 
 
