@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.3](https://github.com/nais/apm/compare/apm-v0.7.2...apm-v0.7.3) (2026-10-02)
+
+
+### Bug Fixes
+
+* **release:** make production dependency updates releasable ([#96](https://github.com/nais/apm/issues/96)) ([fc2a70d](https://github.com/nais/apm/commit/fc2a70d1b6f2c138c69d1350767a380257ff7c5f))
+
 ## [0.7.2](https://github.com/nais/apm/compare/apm-v0.7.1...apm-v0.7.2) (2026-09-24)
 
 
