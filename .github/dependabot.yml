@@ -9,7 +9,8 @@ updates:
       default-days: 5
     open-pull-requests-limit: 5
     commit-message:
-      prefix: 'chore'
+      prefix: 'fix'
+      prefix-development: 'chore'
       include: 'scope'
     ignore:
       # --- Load-bearing pins (see RELEASING.md "Dependency pins") ---
