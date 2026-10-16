@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.4](https://github.com/nais/apm/compare/apm-v0.7.3...apm-v0.7.4) (2026-10-16)
+
+
+### Documentation
+
+* update README to include frontend tracing instructions for Grafana APM ([#99](https://github.com/nais/apm/issues/99)) ([1a991eb](https://github.com/nais/apm/commit/1a991eb9bec258fe8c418c43dbc5f985106277c6))
+
 ## [0.7.3](https://github.com/nais/apm/compare/apm-v0.7.2...apm-v0.7.3) (2026-10-02)
 
 
