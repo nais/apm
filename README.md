@@ -42,6 +42,9 @@ import { init } from '@nais/apm';
 init({ app: 'my-app', namespace: 'my-team' });
 ```
 
+For a standalone frontend, add
+`tracing: true` for it to appear in Grafana APM. See [Browser tracing](#browser-tracing).
+
 `app` and `namespace` are constants — identical in every environment — so passing
 them in code is correct, not a compromise. What actually varies per deploy
 (`environment`, the collector URL) is resolved at runtime; how depends on how your
@@ -438,8 +441,13 @@ Calling `captureException`/`captureMessage`/`setUser`/etc. before `init()` is a 
 
 Opt in with `init({ tracing: true })`. This lazily loads `@grafana/faro-web-tracing` (kept out of your bundle unless you enable it) and starts propagating W3C trace-context headers so browser spans join their backend traces in Tempo.
 
+Set `app` to the same name as the corresponding backend app so Grafana APM can
+group the frontend data with that backend. Tracing enables browser spans and
+their connection to backend traces. Tracing is not required to send other frontend
+telemetry to the collector.
+
 ```ts
-init({ tracing: true });
+init({ app: 'my-app', namespace: 'my-team', tracing: true });
 ```
 
 Trace headers are only ever sent to **nais-owned backends**: a non-overridable floor restricts propagation to the app's own origin and any `https://*.nav.no` host. You can add more origins, but you can never remove the floor (and it is not reachable through the `faro` escape hatch):
