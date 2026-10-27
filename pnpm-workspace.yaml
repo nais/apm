@@ -13,3 +13,5 @@ overrides:
   # GHSA-qwww-vcr4-c8h2 — RSC-mode CSRF bypass. Scoped to the v8 line only:
   # react-router-dom 7.x needs react-router 7.x and must not be dragged along.
   'react-router@>=8.0.0 <8.3.0': '>=8.3.1'
+  # Dependabot: vite <7.3.7 — vitest peer, not bumped by pnpm update.
+  vite: '>=7.3.7 <8'
