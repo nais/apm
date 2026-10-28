@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.7.4](https://github.com/nais/apm/compare/apm-v0.7.3...apm-v0.7.4) (2026-10-28)
+
+
+### Bug Fixes
+
+* **deps:** patch vite, source-map-js, js-yaml and pin release-please actions ([#103](https://github.com/nais/apm/issues/103)) ([0492009](https://github.com/nais/apm/commit/0492009063e303ac54dee23f1e1a4188aeb47776))
+* stop notifications ([#102](https://github.com/nais/apm/issues/102)) ([e76a734](https://github.com/nais/apm/commit/e76a734cf01623f6ecd9c0028c2125214b05d293))
+
+
+### Documentation
+
+* update README to include frontend tracing instructions for Grafana APM ([#99](https://github.com/nais/apm/issues/99)) ([1a991eb](https://github.com/nais/apm/commit/1a991eb9bec258fe8c418c43dbc5f985106277c6))
+
 ## [0.7.3](https://github.com/nais/apm/compare/apm-v0.7.2...apm-v0.7.3) (2026-10-02)
 
 
